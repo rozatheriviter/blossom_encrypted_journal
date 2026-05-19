@@ -65,6 +65,12 @@ pub fn build_window(app: &adw::Application) {
     // ── Header — title + vault chip + home button only ──────────────────────
     let header = adw::HeaderBar::new();
 
+    let sidebar_toggle = gtk4::ToggleButton::builder()
+        .icon_name("sidebar-show-symbolic")
+        .visible(false)
+        .build();
+    header.pack_start(&sidebar_toggle);
+
     let title_label = gtk4::Label::builder()
         .label("blossom")
         .css_classes(["blossom-title"])
@@ -95,29 +101,68 @@ pub fn build_window(app: &adw::Application) {
     home_page.set_vexpand(true);
     main_stack.add_named(&home_page, Some("home"));
 
-    let paned = gtk4::Paned::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .position(260)
-        .wide_handle(false)
-        .build();
-    let sidebar = build_sidebar();
-    paned.set_start_child(Some(&sidebar.outer));
-    let editor = build_editor();
-    paned.set_end_child(Some(&editor.outer));
+    let split_view = adw::OverlaySplitView::new();
+    split_view.set_min_sidebar_width(260.0);
+    split_view.set_max_sidebar_width(320.0);
 
-    // Editor page is just the paned — bottom bar lives in ToolbarView now
+    let sidebar = build_sidebar();
+    split_view.set_sidebar(Some(&sidebar.outer));
+    let editor = build_editor();
+    split_view.set_content(Some(&editor.outer));
+
+    // Editor page is just the split_view — bottom bar lives in ToolbarView now
     let editor_page = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    editor_page.append(&paned);
+    editor_page.set_vexpand(true);
+    editor_page.set_hexpand(true);
+    editor_page.append(&split_view);
     main_stack.add_named(&editor_page, Some("editor"));
 
     // Bottom bar is always visible (outside the stack)
     let bottom_bar = build_bottom_bar();
 
+    let root_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     let toolbar_view = adw::ToolbarView::new();
+    toolbar_view.set_vexpand(true);
+    toolbar_view.set_hexpand(true);
     toolbar_view.add_top_bar(&header);
-    toolbar_view.add_bottom_bar(&bottom_bar.outer);
     toolbar_view.set_content(Some(&main_stack));
-    window.set_content(Some(&toolbar_view));
+
+    sidebar_toggle.bind_property("active", &split_view, "show-sidebar")
+        .bidirectional()
+        .sync_create()
+        .build();
+
+    root_box.append(&toolbar_view);
+    root_box.append(&bottom_bar.outer);
+    window.set_content(Some(&root_box));
+
+    let breakpoint = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
+        adw::BreakpointConditionLengthType::MaxWidth,
+        820.0,
+        adw::LengthUnit::Px,
+    ));
+    breakpoint.add_setter(&root_box, "orientation", Some(&gtk4::Orientation::Horizontal.to_value()));
+    breakpoint.add_setter(&split_view, "collapsed", Some(&true.to_value()));
+    breakpoint.add_setter(&sidebar_toggle, "visible", Some(&true.to_value()));
+    breakpoint.add_setter(&title_label, "visible", Some(&false.to_value()));
+    breakpoint.add_setter(&bottom_bar.sep_h, "visible", Some(&false.to_value()));
+    breakpoint.add_setter(&bottom_bar.sep_v, "visible", Some(&true.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "width-request", Some(&60.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "margin-start", Some(&0.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "margin-end", Some(&0.to_value()));
+    breakpoint.add_setter(&bottom_bar.noise_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.noise_box, "spacing", Some(&12.to_value()));
+    breakpoint.add_setter(&bottom_bar.config_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.mpris_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.mpris_btns, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.track_label, "max-width-chars", Some(&6.to_value()));
+    breakpoint.add_setter(&bottom_bar.artist_label, "max-width-chars", Some(&6.to_value()));
+    breakpoint.add_setter(&bottom_bar.spacer, "visible", Some(&false.to_value()));
+    breakpoint.add_setter(&editor.body, "left-margin", Some(&12.to_value()));
+    breakpoint.add_setter(&editor.body, "right-margin", Some(&12.to_value()));
+    breakpoint.add_setter(&editor.title, "margin-start", Some(&12.to_value()));
+    window.add_breakpoint(breakpoint);
 
     // ── Closures (defined in dependency order) ──────────────────────────────
 
@@ -901,7 +946,6 @@ struct SidebarWidgets {
 fn build_sidebar() -> SidebarWidgets {
     let outer = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     outer.add_css_class("sidebar");
-    outer.set_width_request(260);
 
     let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     header.add_css_class("sidebar-header");
@@ -1057,13 +1101,20 @@ fn build_editor() -> EditorWidgets {
 
 struct BottomBarWidgets {
     outer:        gtk4::Box,
+    inner:        gtk4::Box,
+    noise_box:    gtk4::Box,
+    config_box:   gtk4::Box,
+    mpris_box:    gtk4::Box,
+    mpris_btns:   gtk4::Box,
+    spacer:       gtk4::Box,
+    sep_h:        gtk4::Separator,
+    sep_v:        gtk4::Separator,
     white_scale:  gtk4::Scale,
     pink_scale:   gtk4::Scale,
     brown_scale:  gtk4::Scale,
     master_scale: gtk4::Scale,
     dark_btn:     gtk4::Button,
     accent_btn:   gtk4::Button,
-    mpris_box:    gtk4::Box,
     track_label:  gtk4::Label,
     artist_label: gtk4::Label,
     prev_btn:     gtk4::Button,
@@ -1072,9 +1123,11 @@ struct BottomBarWidgets {
 }
 
 fn build_bottom_bar() -> BottomBarWidgets {
-    let outer = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    let outer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     outer.add_css_class("bottom-bar");
-    outer.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
+    let sep_h = gtk4::Separator::new(gtk4::Orientation::Horizontal);
+    let sep_v = gtk4::Separator::new(gtk4::Orientation::Vertical);
+    sep_v.set_visible(false);
 
     let inner = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
     inner.set_margin_start(16); inner.set_margin_end(16);
@@ -1084,18 +1137,17 @@ fn build_bottom_bar() -> BottomBarWidgets {
     let noise_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
     noise_box.append(&gtk4::Label::builder()
         .label("AMBIENT").css_classes(["noise-section-label"]).build());
-    let (ws,wl) = noise_slider("W");  let (ps,pl) = noise_slider("P");
-    let (bs,bl) = noise_slider("Br"); let (ms,ml) = noise_slider("VOL");
-    noise_box.append(&wl); noise_box.append(&ws);
-    noise_box.append(&pl); noise_box.append(&ps);
-    noise_box.append(&bl); noise_box.append(&bs);
-    noise_box.append(&ml); noise_box.append(&ms);
+    let (wg, ws) = noise_slider_group("W");   let (pg, ps) = noise_slider_group("P");
+    let (bg, bs) = noise_slider_group("Br");  let (mg, ms) = noise_slider_group("VOL");
+    noise_box.append(&wg); noise_box.append(&pg);
+    noise_box.append(&bg); noise_box.append(&mg);
 
     // Spacer
     let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
 
     // Controls: dark mode + accent
+    let config_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     let dark_btn = gtk4::Button::builder()
         .icon_name("weather-clear-night-symbolic")
         .tooltip_text("Toggle dark mode")
@@ -1104,6 +1156,8 @@ fn build_bottom_bar() -> BottomBarWidgets {
         .icon_name("preferences-color-symbolic")
         .tooltip_text("Accent color")
         .css_classes(["flat"]).build();
+    config_box.append(&dark_btn);
+    config_box.append(&accent_btn);
 
     // MPRIS
     let mpris_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -1115,39 +1169,50 @@ fn build_bottom_bar() -> BottomBarWidgets {
     let tbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     tbox.set_valign(gtk4::Align::Center);
     tbox.append(&track_label); tbox.append(&artist_label);
+
+    let mpris_btns = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     let prev_btn = gtk4::Button::builder()
         .icon_name("media-skip-backward-symbolic").css_classes(["mpris-button"]).build();
     let play_btn = gtk4::Button::builder()
         .icon_name("media-playback-start-symbolic").css_classes(["mpris-button"]).build();
     let next_btn = gtk4::Button::builder()
         .icon_name("media-skip-forward-symbolic").css_classes(["mpris-button"]).build();
+    mpris_btns.append(&prev_btn); mpris_btns.append(&play_btn); mpris_btns.append(&next_btn);
+
     mpris_box.append(&tbox);
-    mpris_box.append(&prev_btn); mpris_box.append(&play_btn); mpris_box.append(&next_btn);
+    mpris_box.append(&mpris_btns);
 
     inner.append(&noise_box);
     inner.append(&spacer);
-    inner.append(&dark_btn);
-    inner.append(&accent_btn);
+    inner.append(&config_box);
     inner.append(&mpris_box);
 
-    outer.append(&inner);
+    let main_content = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    main_content.append(&sep_h);
+    main_content.append(&inner);
+
+    outer.append(&sep_v);
+    outer.append(&main_content);
 
     BottomBarWidgets {
-        outer,
+        outer, inner, noise_box, config_box, mpris_box, mpris_btns, spacer, sep_h, sep_v,
         white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms,
         dark_btn, accent_btn,
-        mpris_box, track_label, artist_label, prev_btn, play_btn, next_btn,
+        track_label, artist_label, prev_btn, play_btn, next_btn,
     }
 }
 
-fn noise_slider(label: &str) -> (gtk4::Scale, gtk4::Label) {
-    let lbl   = gtk4::Label::builder().label(label).css_classes(["noise-label"]).build();
+fn noise_slider_group(label: &str) -> (gtk4::Box, gtk4::Scale) {
+    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    let lbl  = gtk4::Label::builder().label(label).css_classes(["noise-label"]).build();
     let scale = gtk4::Scale::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .adjustment(&gtk4::Adjustment::new(0.0, 0.0, 1.0, 0.01, 0.1, 0.0))
-        .width_request(64).draw_value(false).css_classes(["noise-slider"]).build();
+        .width_request(48).draw_value(false).css_classes(["noise-slider"]).build();
     if label == "VOL" { scale.set_value(0.5); }
-    (scale, lbl)
+    hbox.append(&lbl);
+    hbox.append(&scale);
+    (hbox, scale)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

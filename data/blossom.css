@@ -59,7 +59,6 @@ headerbar {
 .sidebar {
   background-color: BLOSSOM_SURF;
   border-right: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.12);
-  min-width: 260px;
 }
 
 .sidebar-header {
@@ -319,7 +318,7 @@ scale.noise-slider slider:hover {
   background-color: BLOSSOM_SURF;
   border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.16);
   border-radius: 12px;
-  min-width: 400px;
+  min-width: 300px;
 }
 .journal-card:hover {
   border-color: rgba(BLOSSOM_ARGB, 0.30);
