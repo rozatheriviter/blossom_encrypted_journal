@@ -214,14 +214,14 @@ textview.editor-body > text {
   min-height: 18px;
   padding: 1px;
   border-radius: 50%;
-  background-color: rgba(0,0,0,0.55) !important;
-  background-image: none !important;
+  background-color: rgba(0,0,0,0.55);
+  background-image: none;
   color: #ffffff;
   border: none;
   margin: 3px;
 }
 .media-delete-btn:hover {
-  background-color: rgba(180,40,40,0.85) !important;
+  background-color: rgba(180,40,40,0.85);
 }
 
 /* ── Bottom bar ─────────────────────────────────────────────────────────── */
@@ -455,14 +455,14 @@ button.swatch-wisteria,
 button.swatch-moss,
 button.swatch-dusk,
 button.swatch-ember,
-button.swatch-mono     { background-image: none !important; }
+button.swatch-mono     { background-image: none; }
 
-button.swatch-cherry   { background-color: #c55a74 !important; }
-button.swatch-wisteria { background-color: #7b5ea7 !important; }
-button.swatch-moss     { background-color: #4a7c59 !important; }
-button.swatch-dusk     { background-color: #4a6fa5 !important; }
-button.swatch-ember    { background-color: #c05c2a !important; }
-button.swatch-mono     { background-color: #505050 !important; }
+button.swatch-cherry   { background-color: #c55a74; }
+button.swatch-wisteria { background-color: #7b5ea7; }
+button.swatch-moss     { background-color: #4a7c59; }
+button.swatch-dusk     { background-color: #4a6fa5; }
+button.swatch-ember    { background-color: #c05c2a; }
+button.swatch-mono     { background-color: #505050; }
 
 /* ── Calendar ───────────────────────────────────────────────────────────── */
 

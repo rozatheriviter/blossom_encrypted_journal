@@ -57,3 +57,58 @@ pub fn b64_encode(data: &[u8]) -> String { B64.encode(data) }
 pub fn b64_decode(s: &str) -> Result<Vec<u8>> {
     B64.decode(s).context("invalid base64")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_derive_key() {
+        let passphrase = "password123";
+        let salt = gen_salt();
+        let key = derive_key(passphrase, &salt).unwrap();
+        assert_eq!(key.len(), KEY_LEN);
+
+        let key2 = derive_key(passphrase, &salt).unwrap();
+        assert_eq!(key, key2);
+
+        let key3 = derive_key("different", &salt).unwrap();
+        assert_ne!(key, key3);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt() {
+        let passphrase = "secure_journal";
+        let salt = gen_salt();
+        let key = derive_key(passphrase, &salt).unwrap();
+        let plaintext = b"Hello, this is a secret entry.";
+
+        let (ciphertext, nonce) = encrypt(&key, plaintext).unwrap();
+        assert_ne!(plaintext.to_vec(), ciphertext);
+
+        let decrypted = decrypt(&key, &nonce, &ciphertext).unwrap();
+        assert_eq!(plaintext.to_vec(), decrypted);
+    }
+
+    #[test]
+    fn test_decrypt_failure() {
+        let passphrase = "secure_journal";
+        let salt = gen_salt();
+        let key = derive_key(passphrase, &salt).unwrap();
+        let plaintext = b"Secret data";
+
+        let (ciphertext, nonce) = encrypt(&key, plaintext).unwrap();
+
+        let wrong_key = [0u8; KEY_LEN];
+        let result = decrypt(&wrong_key, &nonce, &ciphertext);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_base64() {
+        let data = b"some data to encode";
+        let encoded = b64_encode(data);
+        let decoded = b64_decode(&encoded).unwrap();
+        assert_eq!(data.to_vec(), decoded);
+    }
+}
