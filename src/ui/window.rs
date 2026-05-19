@@ -113,21 +113,34 @@ pub fn build_window(app: &adw::Application) {
     // Bottom bar is always visible (outside the stack)
     let bottom_bar = build_bottom_bar();
 
+    let root_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header);
-    toolbar_view.add_bottom_bar(&bottom_bar.outer);
     toolbar_view.set_content(Some(&main_stack));
-    window.set_content(Some(&toolbar_view));
+
+    root_box.append(&toolbar_view);
+    root_box.append(&bottom_bar.outer);
+    window.set_content(Some(&root_box));
 
     let breakpoint = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
         adw::BreakpointConditionLengthType::MaxWidth,
         820.0,
         adw::LengthUnit::Px,
     ));
+    breakpoint.add_setter(&root_box, "orientation", Some(&gtk4::Orientation::Horizontal.to_value()));
+    breakpoint.add_setter(&bottom_bar.sep_h, "visible", Some(&false.to_value()));
+    breakpoint.add_setter(&bottom_bar.sep_v, "visible", Some(&true.to_value()));
     breakpoint.add_setter(&bottom_bar.inner, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "width-request", Some(&60.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "margin-start", Some(&4.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "margin-end", Some(&4.to_value()));
     breakpoint.add_setter(&bottom_bar.noise_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
-    breakpoint.add_setter(&bottom_bar.noise_box, "halign", Some(&gtk4::Align::Center.to_value()));
-    breakpoint.add_setter(&bottom_bar.config_box, "halign", Some(&gtk4::Align::Center.to_value()));
+    breakpoint.add_setter(&bottom_bar.noise_box, "spacing", Some(&12.to_value()));
+    breakpoint.add_setter(&bottom_bar.config_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.mpris_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.mpris_btns, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.track_label, "max-width-chars", Some(&6.to_value()));
+    breakpoint.add_setter(&bottom_bar.artist_label, "max-width-chars", Some(&6.to_value()));
     breakpoint.add_setter(&bottom_bar.spacer, "visible", Some(&false.to_value()));
     window.add_breakpoint(breakpoint);
 
@@ -1072,14 +1085,17 @@ struct BottomBarWidgets {
     inner:        gtk4::Box,
     noise_box:    gtk4::Box,
     config_box:   gtk4::Box,
+    mpris_box:    gtk4::Box,
+    mpris_btns:   gtk4::Box,
     spacer:       gtk4::Box,
+    sep_h:        gtk4::Separator,
+    sep_v:        gtk4::Separator,
     white_scale:  gtk4::Scale,
     pink_scale:   gtk4::Scale,
     brown_scale:  gtk4::Scale,
     master_scale: gtk4::Scale,
     dark_btn:     gtk4::Button,
     accent_btn:   gtk4::Button,
-    mpris_box:    gtk4::Box,
     track_label:  gtk4::Label,
     artist_label: gtk4::Label,
     prev_btn:     gtk4::Button,
@@ -1088,9 +1104,11 @@ struct BottomBarWidgets {
 }
 
 fn build_bottom_bar() -> BottomBarWidgets {
-    let outer = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    let outer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     outer.add_css_class("bottom-bar");
-    outer.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
+    let sep_h = gtk4::Separator::new(gtk4::Orientation::Horizontal);
+    let sep_v = gtk4::Separator::new(gtk4::Orientation::Vertical);
+    sep_v.set_visible(false);
 
     let inner = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
     inner.set_margin_start(16); inner.set_margin_end(16);
@@ -1132,27 +1150,36 @@ fn build_bottom_bar() -> BottomBarWidgets {
     let tbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     tbox.set_valign(gtk4::Align::Center);
     tbox.append(&track_label); tbox.append(&artist_label);
+
+    let mpris_btns = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     let prev_btn = gtk4::Button::builder()
         .icon_name("media-skip-backward-symbolic").css_classes(["mpris-button"]).build();
     let play_btn = gtk4::Button::builder()
         .icon_name("media-playback-start-symbolic").css_classes(["mpris-button"]).build();
     let next_btn = gtk4::Button::builder()
         .icon_name("media-skip-forward-symbolic").css_classes(["mpris-button"]).build();
+    mpris_btns.append(&prev_btn); mpris_btns.append(&play_btn); mpris_btns.append(&next_btn);
+
     mpris_box.append(&tbox);
-    mpris_box.append(&prev_btn); mpris_box.append(&play_btn); mpris_box.append(&next_btn);
+    mpris_box.append(&mpris_btns);
 
     inner.append(&noise_box);
     inner.append(&spacer);
     inner.append(&config_box);
     inner.append(&mpris_box);
 
-    outer.append(&inner);
+    let main_content = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    main_content.append(&sep_h);
+    main_content.append(&inner);
+
+    outer.append(&sep_v);
+    outer.append(&main_content);
 
     BottomBarWidgets {
-        outer, inner, noise_box, config_box, spacer,
+        outer, inner, noise_box, config_box, mpris_box, mpris_btns, spacer, sep_h, sep_v,
         white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms,
         dark_btn, accent_btn,
-        mpris_box, track_label, artist_label, prev_btn, play_btn, next_btn,
+        track_label, artist_label, prev_btn, play_btn, next_btn,
     }
 }
 
@@ -1162,7 +1189,7 @@ fn noise_slider_group(label: &str) -> (gtk4::Box, gtk4::Scale) {
     let scale = gtk4::Scale::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .adjustment(&gtk4::Adjustment::new(0.0, 0.0, 1.0, 0.01, 0.1, 0.0))
-        .width_request(64).draw_value(false).css_classes(["noise-slider"]).build();
+        .width_request(48).draw_value(false).css_classes(["noise-slider"]).build();
     if label == "VOL" { scale.set_value(0.5); }
     hbox.append(&lbl);
     hbox.append(&scale);
