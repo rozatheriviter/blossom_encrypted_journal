@@ -802,8 +802,6 @@ fn build_journal_card(
     text_box.set_margin_top(14);   text_box.set_margin_bottom(14);
     text_box.append(&gtk4::Label::builder()
         .label(name).css_classes(["journal-card-name"]).halign(gtk4::Align::Start).build());
-    text_box.append(&gtk4::Label::builder()
-        .label("Click to open").css_classes(["journal-card-meta"]).halign(gtk4::Align::Start).build());
 
     let open_btn = gtk4::Button::builder().label("Open").css_classes(["flat"])
         .valign(gtk4::Align::Center).margin_end(8).build();
