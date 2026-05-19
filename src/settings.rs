@@ -6,43 +6,6 @@ use std::path::PathBuf;
 // Accent presets
 // ──────────────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum Accent {
-    #[default]
-    Cherry,
-    Wisteria,
-    Moss,
-    Dusk,
-    Ember,
-    Mono,
-}
-
-pub struct AccentColors {
-    pub hex:   &'static str,
-    pub light: &'static str,
-    pub bg:    &'static str,
-    pub rgb:   &'static str,
-    pub label: &'static str,
-}
-
-impl Accent {
-    pub fn colors(self) -> AccentColors {
-        match self {
-            Accent::Cherry   => AccentColors { hex: "#c55a74", light: "#e8b4be", bg: "#fef5f7", rgb: "197, 90, 116",  label: "Cherry" },
-            Accent::Wisteria => AccentColors { hex: "#7b5ea7", light: "#c3b0dc", bg: "#f7f3fc", rgb: "123, 94, 167",  label: "Wisteria" },
-            Accent::Moss     => AccentColors { hex: "#4a7c59", light: "#9fc4a8", bg: "#f2f8f4", rgb: "74, 124, 89",   label: "Moss" },
-            Accent::Dusk     => AccentColors { hex: "#4a6fa5", light: "#9eb8d9", bg: "#f2f5fb", rgb: "74, 111, 165",  label: "Dusk" },
-            Accent::Ember    => AccentColors { hex: "#c05c2a", light: "#e4b49a", bg: "#fdf4ee", rgb: "192, 92, 42",   label: "Ember" },
-            Accent::Mono     => AccentColors { hex: "#505050", light: "#b0b0b0", bg: "#f5f5f5", rgb: "80, 80, 80",    label: "Mono" },
-        }
-    }
-
-    pub const ALL: &'static [Accent] = &[
-        Accent::Cherry, Accent::Wisteria, Accent::Moss,
-        Accent::Dusk, Accent::Ember, Accent::Mono,
-    ];
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Theme (light / dark) tokens
@@ -85,13 +48,11 @@ const DARK: ThemeTokens = ThemeTokens {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
-    pub accent: Accent,
-    #[serde(default)]
     pub dark_mode: bool,
 }
 
 impl Default for AppSettings {
-    fn default() -> Self { AppSettings { accent: Accent::Cherry, dark_mode: false } }
+    fn default() -> Self { AppSettings { dark_mode: false } }
 }
 
 impl AppSettings {
@@ -118,14 +79,13 @@ impl AppSettings {
     }
 
     pub fn css(&self) -> String {
-        let a = self.accent.colors();
         let t = if self.dark_mode { &DARK } else { &LIGHT };
         include_str!("../data/blossom.css")
-            // accent tokens
-            .replace("BLOSSOM_ACCENT", a.hex)
-            .replace("BLOSSOM_AL",     a.light)
-            .replace("BLOSSOM_AB",     a.bg)
-            .replace("BLOSSOM_ARGB",   a.rgb)
+            // accent tokens (hardcoded pink)
+            .replace("BLOSSOM_ACCENT", "#c55a74")
+            .replace("BLOSSOM_AL",     "#e8b4be")
+            .replace("BLOSSOM_AB",     "#fef5f7")
+            .replace("BLOSSOM_ARGB",   "197, 90, 116")
             // theme tokens (order matters: longer tokens first)
             .replace("BLOSSOM_BORDER_RGB", t.border_rgb)
             .replace("BLOSSOM_INPUT",  t.input)
