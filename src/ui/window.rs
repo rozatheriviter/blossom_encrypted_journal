@@ -152,8 +152,8 @@ pub fn build_window(app: &adw::Application) {
     breakpoint.add_setter(&bottom_bar.inner, "width-request", Some(&60.to_value()));
     breakpoint.add_setter(&bottom_bar.inner, "margin-start", Some(&0.to_value()));
     breakpoint.add_setter(&bottom_bar.inner, "margin-end", Some(&0.to_value()));
-    breakpoint.add_setter(&bottom_bar.noise_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
-    breakpoint.add_setter(&bottom_bar.noise_box, "spacing", Some(&12.to_value()));
+    breakpoint.add_setter(&bottom_bar.noise_box, "orientation", Some(&gtk4::Orientation::Horizontal.to_value()));
+    breakpoint.add_setter(&bottom_bar.noise_box, "spacing", Some(&8.to_value()));
     breakpoint.add_setter(&bottom_bar.config_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
     breakpoint.add_setter(&bottom_bar.mpris_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
     breakpoint.add_setter(&bottom_bar.mpris_btns, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
@@ -679,18 +679,21 @@ pub fn build_window(app: &adw::Application) {
         let play_btn  = bottom_bar.play_btn.clone();
         let track_lbl = bottom_bar.track_label.clone();
         let art_lbl   = bottom_bar.artist_label.clone();
+        let mpris_vol = bottom_bar.mpris_vol.clone();
         glib::timeout_add_local(Duration::from_secs(2), move || {
             if let Some(np) = mpris2.get() {
                 npbox.set_visible(true);
                 track_lbl.set_label(&np.title);
                 art_lbl.set_label(&np.artist);
                 play_btn.set_icon_name(np.status.icon());
+                mpris_vol.set_value(np.volume);
             } else {
                 npbox.set_visible(false);
             }
             glib::ControlFlow::Continue
         });
     }
+    bottom_bar.mpris_vol.connect_value_changed(|s| crate::mpris::set_volume(s.value()));
     bottom_bar.prev_btn.connect_clicked(|_| crate::mpris::send_command("Previous"));
     bottom_bar.play_btn.connect_clicked(|_| crate::mpris::send_command("PlayPause"));
     bottom_bar.next_btn.connect_clicked(|_| crate::mpris::send_command("Next"));
@@ -1210,6 +1213,7 @@ struct BottomBarWidgets {
     pink_scale:   gtk4::Scale,
     brown_scale:  gtk4::Scale,
     master_scale: gtk4::Scale,
+    mpris_vol:    gtk4::Scale,
     dark_btn:     gtk4::Button,
     track_label:  gtk4::Label,
     artist_label: gtk4::Label,
@@ -1230,13 +1234,15 @@ fn build_bottom_bar() -> BottomBarWidgets {
     inner.set_margin_top(7);    inner.set_margin_bottom(7);
 
     // Noise section
-    let noise_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
+    let noise_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
     noise_box.append(&gtk4::Label::builder()
         .label("AMBIENT").css_classes(["noise-section-label"]).build());
-    let (wg, ws) = noise_slider_group("W");   let (pg, ps) = noise_slider_group("P");
-    let (bg, bs) = noise_slider_group("Br");  let (mg, ms) = noise_slider_group("VOL");
-    noise_box.append(&wg); noise_box.append(&pg);
-    noise_box.append(&bg); noise_box.append(&mg);
+    let (bg, bs) = noise_slider_group("brown");
+    let (pg, ps) = noise_slider_group("pink");
+    let (wg, ws) = noise_slider_group("white");
+    let (mg, ms) = noise_slider_group("vol");
+    noise_box.append(&bg); noise_box.append(&pg);
+    noise_box.append(&wg); noise_box.append(&mg);
 
     // Spacer
     let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
@@ -1251,8 +1257,16 @@ fn build_bottom_bar() -> BottomBarWidgets {
     config_box.append(&dark_btn);
 
     // MPRIS
-    let mpris_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    let mpris_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
     mpris_box.set_visible(false);
+    let mpris_vol = gtk4::Scale::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .adjustment(&gtk4::Adjustment::new(1.0, 0.0, 1.0, 0.01, 0.1, 0.0))
+        .inverted(true)
+        .height_request(50)
+        .draw_value(false)
+        .css_classes(["noise-slider", "noise-slider-vol"])
+        .build();
     let track_label  = gtk4::Label::builder().css_classes(["mpris-title"])
         .ellipsize(gtk4::pango::EllipsizeMode::End).max_width_chars(28).build();
     let artist_label = gtk4::Label::builder().css_classes(["mpris-artist"])
@@ -1272,6 +1286,7 @@ fn build_bottom_bar() -> BottomBarWidgets {
 
     mpris_box.append(&tbox);
     mpris_box.append(&mpris_btns);
+    mpris_box.append(&mpris_vol);
 
     inner.append(&noise_box);
     inner.append(&config_box);
@@ -1287,23 +1302,25 @@ fn build_bottom_bar() -> BottomBarWidgets {
 
     BottomBarWidgets {
         outer, inner, noise_box, config_box, mpris_box, mpris_btns, spacer, sep_h, sep_v,
-        white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms,
+        white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms, mpris_vol,
         dark_btn,
         track_label, artist_label, prev_btn, play_btn, next_btn,
     }
 }
 
-fn noise_slider_group(label: &str) -> (gtk4::Box, gtk4::Scale) {
-    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
-    let lbl  = gtk4::Label::builder().label(label).css_classes(["noise-label"]).build();
+fn noise_slider_group(class: &str) -> (gtk4::Box, gtk4::Scale) {
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     let scale = gtk4::Scale::builder()
-        .orientation(gtk4::Orientation::Horizontal)
+        .orientation(gtk4::Orientation::Vertical)
         .adjustment(&gtk4::Adjustment::new(0.0, 0.0, 1.0, 0.01, 0.1, 0.0))
-        .width_request(48).draw_value(false).css_classes(["noise-slider"]).build();
-    if label == "VOL" { scale.set_value(0.5); }
-    hbox.append(&lbl);
-    hbox.append(&scale);
-    (hbox, scale)
+        .inverted(true)
+        .height_request(50)
+        .draw_value(false)
+        .css_classes(["noise-slider", &format!("noise-slider-{class}")])
+        .build();
+    if class == "vol" { scale.set_value(0.5); }
+    vbox.append(&scale);
+    (vbox, scale)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

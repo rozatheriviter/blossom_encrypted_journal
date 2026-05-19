@@ -227,6 +227,7 @@ textview.editor-body > text {
 
 .bottom-bar {
   background-color: BLOSSOM_SURF;
+  min-height: 90px;
 }
 
 /* ── Noise panel ────────────────────────────────────────────────────────── */
@@ -237,31 +238,33 @@ textview.editor-body > text {
   letter-spacing: 0.14em;
   color: BLOSSOM_FG3;
 }
-.noise-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: BLOSSOM_FG2;
-  min-width: 20px;
-}
 
 scale.noise-slider trough {
-  background-color: rgba(BLOSSOM_ARGB, 0.12);
-  border-radius: 3px;
-  min-height: 3px;
+  background-color: rgba(BLOSSOM_BORDER_RGB, 0.08);
+  border-radius: 2px;
+  min-width: 4px;
 }
-scale.noise-slider trough highlight {
-  background-color: BLOSSOM_ACCENT;
-  border-radius: 3px;
+scale.noise-slider.vertical trough {
+  min-width: 4px;
+  min-height: 50px;
 }
 scale.noise-slider slider {
-  background-color: BLOSSOM_ACCENT;
-  min-width: 13px;
-  min-height: 13px;
+  background-color: BLOSSOM_FG2;
+  min-width: 10px;
+  min-height: 10px;
   border-radius: 50%;
-  box-shadow: 0 1px 4px rgba(BLOSSOM_ARGB, 0.40);
+  box-shadow: none;
   border: none;
 }
+
+scale.noise-slider-white highlight { background-color: #ffffff; }
+scale.noise-slider-white slider    { background-color: #ffffff; }
+scale.noise-slider-pink  highlight { background-color: #ffb6c1; }
+scale.noise-slider-pink  slider    { background-color: #ffb6c1; }
+scale.noise-slider-brown highlight { background-color: #a52a2a; }
+scale.noise-slider-brown slider    { background-color: #a52a2a; }
+scale.noise-slider-vol   highlight { background-color: BLOSSOM_ACCENT; }
+scale.noise-slider-vol   slider    { background-color: BLOSSOM_ACCENT; }
 scale.noise-slider slider:hover {
   box-shadow: 0 0 0 4px rgba(BLOSSOM_ARGB, 0.16), 0 1px 4px rgba(BLOSSOM_ARGB, 0.40);
 }
