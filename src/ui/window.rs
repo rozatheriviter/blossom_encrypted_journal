@@ -119,6 +119,18 @@ pub fn build_window(app: &adw::Application) {
     toolbar_view.set_content(Some(&main_stack));
     window.set_content(Some(&toolbar_view));
 
+    let breakpoint = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
+        adw::BreakpointConditionLengthType::MaxWidth,
+        820.0,
+        adw::LengthUnit::Px,
+    ));
+    breakpoint.add_setter(&bottom_bar.inner, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.noise_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
+    breakpoint.add_setter(&bottom_bar.noise_box, "halign", Some(&gtk4::Align::Center.to_value()));
+    breakpoint.add_setter(&bottom_bar.config_box, "halign", Some(&gtk4::Align::Center.to_value()));
+    breakpoint.add_setter(&bottom_bar.spacer, "visible", Some(&false.to_value()));
+    window.add_breakpoint(breakpoint);
+
     // ── Closures (defined in dependency order) ──────────────────────────────
 
     // 1. refresh_list
@@ -1057,6 +1069,10 @@ fn build_editor() -> EditorWidgets {
 
 struct BottomBarWidgets {
     outer:        gtk4::Box,
+    inner:        gtk4::Box,
+    noise_box:    gtk4::Box,
+    config_box:   gtk4::Box,
+    spacer:       gtk4::Box,
     white_scale:  gtk4::Scale,
     pink_scale:   gtk4::Scale,
     brown_scale:  gtk4::Scale,
@@ -1084,18 +1100,17 @@ fn build_bottom_bar() -> BottomBarWidgets {
     let noise_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
     noise_box.append(&gtk4::Label::builder()
         .label("AMBIENT").css_classes(["noise-section-label"]).build());
-    let (ws,wl) = noise_slider("W");  let (ps,pl) = noise_slider("P");
-    let (bs,bl) = noise_slider("Br"); let (ms,ml) = noise_slider("VOL");
-    noise_box.append(&wl); noise_box.append(&ws);
-    noise_box.append(&pl); noise_box.append(&ps);
-    noise_box.append(&bl); noise_box.append(&bs);
-    noise_box.append(&ml); noise_box.append(&ms);
+    let (wg, ws) = noise_slider_group("W");   let (pg, ps) = noise_slider_group("P");
+    let (bg, bs) = noise_slider_group("Br");  let (mg, ms) = noise_slider_group("VOL");
+    noise_box.append(&wg); noise_box.append(&pg);
+    noise_box.append(&bg); noise_box.append(&mg);
 
     // Spacer
     let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
 
     // Controls: dark mode + accent
+    let config_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     let dark_btn = gtk4::Button::builder()
         .icon_name("weather-clear-night-symbolic")
         .tooltip_text("Toggle dark mode")
@@ -1104,6 +1119,8 @@ fn build_bottom_bar() -> BottomBarWidgets {
         .icon_name("preferences-color-symbolic")
         .tooltip_text("Accent color")
         .css_classes(["flat"]).build();
+    config_box.append(&dark_btn);
+    config_box.append(&accent_btn);
 
     // MPRIS
     let mpris_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -1126,28 +1143,30 @@ fn build_bottom_bar() -> BottomBarWidgets {
 
     inner.append(&noise_box);
     inner.append(&spacer);
-    inner.append(&dark_btn);
-    inner.append(&accent_btn);
+    inner.append(&config_box);
     inner.append(&mpris_box);
 
     outer.append(&inner);
 
     BottomBarWidgets {
-        outer,
+        outer, inner, noise_box, config_box, spacer,
         white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms,
         dark_btn, accent_btn,
         mpris_box, track_label, artist_label, prev_btn, play_btn, next_btn,
     }
 }
 
-fn noise_slider(label: &str) -> (gtk4::Scale, gtk4::Label) {
-    let lbl   = gtk4::Label::builder().label(label).css_classes(["noise-label"]).build();
+fn noise_slider_group(label: &str) -> (gtk4::Box, gtk4::Scale) {
+    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    let lbl  = gtk4::Label::builder().label(label).css_classes(["noise-label"]).build();
     let scale = gtk4::Scale::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .adjustment(&gtk4::Adjustment::new(0.0, 0.0, 1.0, 0.01, 0.1, 0.0))
         .width_request(64).draw_value(false).css_classes(["noise-slider"]).build();
     if label == "VOL" { scale.set_value(0.5); }
-    (scale, lbl)
+    hbox.append(&lbl);
+    hbox.append(&scale);
+    (hbox, scale)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
