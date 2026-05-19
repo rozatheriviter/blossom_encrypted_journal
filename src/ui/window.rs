@@ -91,6 +91,7 @@ pub fn build_window(app: &adw::Application) {
         .build();
     header.pack_start(&home_btn);
 
+
     // ── Stacks ─────────────────────────────────────────────────────────────
     let main_stack = gtk4::Stack::new();
     main_stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
@@ -270,6 +271,7 @@ pub fn build_window(app: &adw::Application) {
         let window       = window.clone();
         let refresh_list = Rc::clone(&refresh_list);
         let rh_holder    = Rc::clone(&rh_holder);
+        let split_view   = split_view.clone();
 
         Rc::new(move || {
             while let Some(c) = home_page.first_child() { home_page.remove(&c); }
@@ -304,6 +306,7 @@ pub fn build_window(app: &adw::Application) {
                         vault_chip.clone(),
                         home_btn.clone(),
                         window.clone(),
+                        split_view.clone(),
                     );
                     centre.append(&card);
                 }
@@ -321,10 +324,12 @@ pub fn build_window(app: &adw::Application) {
                 let rl     = Rc::clone(&refresh_list);
                 let win    = window.clone();
                 let win2   = window.clone();
+                let sv     = split_view.clone();
                 new_btn.connect_clicked(move |_| {
                     wire_create_journal(
                         &win, Rc::clone(&state2), ms.clone(), es.clone(),
                         vc.clone(), hb.clone(), Rc::clone(&rl), win2.clone(),
+                        sv.clone(),
                     );
                 });
             }
@@ -554,7 +559,9 @@ pub fn build_window(app: &adw::Application) {
             f.add_mime_type("image/*");
             f.add_mime_type("video/*");
             filters.append(&f);
+            let home_dir = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
             let fd = gtk4::FileDialog::builder().title("Attach Media").filters(&filters).build();
+            fd.set_initial_folder(Some(&gio::File::for_path(&home_dir)));
             let state2  = Rc::clone(&state);
             let mbox3   = mbox2.clone();
             let mstrip2 = mstrip.clone();
@@ -783,6 +790,68 @@ pub fn build_window(app: &adw::Application) {
         });
     }
 
+    // ── Wire: Word count ───────────────────────────────────────────────────
+    {
+        let wc = editor.word_count_label.clone();
+        editor.body.buffer().connect_changed(move |buf| {
+            let text  = buf.text(&buf.start_iter(), &buf.end_iter(), false);
+            let words = text.split_whitespace().count();
+            let chars = text.chars().count();
+            wc.set_label(&format!("{words} words · {chars} chars"));
+        });
+    }
+
+    // ── Wire: Export entry ─────────────────────────────────────────────────
+    {
+        let etitle = editor.title.clone();
+        let ebody  = editor.body.clone();
+        let win2   = window.clone();
+        editor.export_btn.connect_clicked(move |_| {
+            let title = etitle.text().to_string();
+            let buf   = ebody.buffer();
+            let body  = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+            let stem  = if title.is_empty() { "untitled".to_string() } else { title.clone() };
+            let fd    = gtk4::FileDialog::builder()
+                .title("Export Entry")
+                .initial_name(&format!("{stem}.md"))
+                .build();
+            let home_dir = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+            fd.set_initial_folder(Some(&gio::File::for_path(&home_dir)));
+            fd.save(Some(&win2), None::<&gio::Cancellable>, move |result| {
+                let Ok(file)   = result else { return; };
+                let Some(path) = file.path() else { return; };
+                let content = if title.is_empty() {
+                    body.clone()
+                } else {
+                    format!("# {title}\n\n{body}")
+                };
+                let _ = std::fs::write(&path, content);
+            });
+        });
+    }
+
+    // ── Wire: Keyboard shortcuts ───────────────────────────────────────────
+    {
+        let new_btn2 = sidebar.new_btn.clone();
+        let search2  = sidebar.search.clone();
+        let font2    = editor.font_btn.clone();
+        let ms3      = main_stack.clone();
+        let key_ctrl = gtk4::EventControllerKey::new();
+        key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+        key_ctrl.connect_key_pressed(move |_, key, _, modifiers| {
+            use gdk4::Key;
+            let ctrl      = modifiers.contains(gdk4::ModifierType::CONTROL_MASK);
+            let in_editor = ms3.visible_child_name().as_deref() == Some("editor");
+            match (ctrl, key) {
+                (true, Key::n) if in_editor     => { new_btn2.emit_clicked(); glib::Propagation::Stop }
+                (true, Key::f) if in_editor     => { search2.grab_focus();    glib::Propagation::Stop }
+                (true, Key::comma) if in_editor => { font2.emit_clicked();     glib::Propagation::Stop }
+                _ => glib::Propagation::Proceed,
+            }
+        });
+        window.add_controller(key_ctrl);
+    }
+
     refresh_home();
     main_stack.set_visible_child_name("home");
     window.present();
@@ -801,6 +870,7 @@ fn wire_create_journal(
     home_btn: gtk4::Button,
     refresh_list: Rc<dyn Fn()>,
     err_parent: adw::ApplicationWindow,
+    split_view: adw::OverlaySplitView,
 ) {
     dlg::show_create(parent, move |name, pass| {
         let path = vault::new_vault_path();
@@ -813,6 +883,7 @@ fn wire_create_journal(
                 state.borrow_mut().current_entry_id = None;
                 editor_stack.set_visible_child_name("empty");
                 main_stack.set_visible_child_name("editor");
+                split_view.set_show_sidebar(true);
                 refresh_list();
             }
             Err(e) => dlg::show_error(&err_parent, &e.to_string()),
@@ -836,6 +907,7 @@ fn build_journal_card(
     vault_chip: gtk4::Label,
     home_btn: gtk4::Button,
     window: adw::ApplicationWindow,
+    split_view: adw::OverlaySplitView,
 ) -> gtk4::Widget {
     let card = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     card.add_css_class("journal-card");
@@ -870,6 +942,7 @@ fn build_journal_card(
         let hb     = home_btn.clone();
         let win    = window.clone();
         let win2   = window.clone();
+        let sv     = split_view.clone();
         open_btn.connect_clicked(move |_| {
             let name3  = name2.clone();
             let path3  = path2.clone();
@@ -880,6 +953,7 @@ fn build_journal_card(
             let vc2    = vc.clone();
             let hb2    = hb.clone();
             let win3   = win2.clone();
+            let sv2    = sv.clone();
             dlg::show_unlock(&win, &name3, move |pass| {
                 match Vault::open(&path3, &pass) {
                     Ok(v) => {
@@ -890,6 +964,7 @@ fn build_journal_card(
                         state3.borrow_mut().current_entry_id = None;
                         es2.set_visible_child_name("empty");
                         ms2.set_visible_child_name("editor");
+                        sv2.set_show_sidebar(true);
                         rl2();
                     }
                     Err(e) => dlg::show_error(&win3, &e.to_string()),
@@ -1001,17 +1076,19 @@ fn build_sidebar() -> SidebarWidgets {
 }
 
 struct EditorWidgets {
-    outer:       gtk4::Box,
-    stack:       gtk4::Stack,
-    title:       gtk4::Entry,
-    body:        gtk4::TextView,
-    media_box:   gtk4::Box,
-    media_strip: gtk4::Box,
-    attach_btn:  gtk4::Button,
-    delete_btn:  gtk4::Button,
-    date_btn:    gtk4::Button,
-    font_btn:    gtk4::Button,
-    lh_btn:      gtk4::Button,
+    outer:            gtk4::Box,
+    stack:            gtk4::Stack,
+    title:            gtk4::Entry,
+    body:             gtk4::TextView,
+    media_box:        gtk4::Box,
+    media_strip:      gtk4::Box,
+    attach_btn:       gtk4::Button,
+    export_btn:       gtk4::Button,
+    delete_btn:       gtk4::Button,
+    date_btn:         gtk4::Button,
+    font_btn:         gtk4::Button,
+    lh_btn:           gtk4::Button,
+    word_count_label: gtk4::Label,
 }
 
 fn build_editor() -> EditorWidgets {
@@ -1053,6 +1130,9 @@ fn build_editor() -> EditorWidgets {
     let attach_btn = gtk4::Button::builder()
         .icon_name("mail-attachment-symbolic").tooltip_text("Attach image or video")
         .css_classes(["flat"]).build();
+    let export_btn = gtk4::Button::builder()
+        .icon_name("document-send-symbolic").tooltip_text("Export entry as .md")
+        .css_classes(["flat"]).build();
     let delete_btn = gtk4::Button::builder()
         .icon_name("user-trash-symbolic").tooltip_text("Delete entry")
         .css_classes(["flat", "destructive-action"]).build();
@@ -1062,6 +1142,7 @@ fn build_editor() -> EditorWidgets {
     title_bar.append(&font_btn);
     title_bar.append(&lh_btn);
     title_bar.append(&attach_btn);
+    title_bar.append(&export_btn);
     title_bar.append(&delete_btn);
 
     let body_view = gtk4::TextView::builder()
@@ -1086,17 +1167,31 @@ fn build_editor() -> EditorWidgets {
     media_strip.append(&media_scroll);
     media_strip.set_visible(false);
 
+    let word_count_label = gtk4::Label::builder()
+        .label("")
+        .css_classes(["word-count-label"])
+        .hexpand(true)
+        .halign(gtk4::Align::End)
+        .margin_end(16)
+        .margin_top(4)
+        .margin_bottom(4)
+        .build();
+    let status_bar = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    status_bar.append(&word_count_label);
+
     evbox.append(&title_bar);
     evbox.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
     evbox.append(&body_scroll);
     evbox.append(&media_strip);
+    evbox.append(&status_bar);
 
     stack.add_named(&evbox, Some("editor"));
     stack.set_visible_child_name("empty");
     outer.append(&stack);
 
     EditorWidgets { outer, stack, title: title_entry, body: body_view,
-                    media_box, media_strip, attach_btn, delete_btn, date_btn, font_btn, lh_btn }
+                    media_box, media_strip, attach_btn, export_btn, delete_btn,
+                    date_btn, font_btn, lh_btn, word_count_label }
 }
 
 struct BottomBarWidgets {
