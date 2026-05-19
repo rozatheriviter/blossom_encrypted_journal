@@ -83,7 +83,7 @@ impl NoiseEngine {
                                     + pink   * m.pink   as f64
                                     + brown_s* m.brown  as f64)
                                     * m.master as f64
-                                    * 0.12; // headroom scale
+                                    * 0.5; // headroom scale
 
                         let s = sample.clamp(-1.0, 1.0) as f32;
                         for ch in frame.iter_mut() { *ch = s; }

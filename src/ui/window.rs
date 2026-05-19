@@ -152,6 +152,7 @@ pub fn build_window(app: &adw::Application) {
         let etitle   = editor.title.clone();
         let ebody    = editor.body.clone();
         let mbox     = editor.media_box.clone();
+        let mstrip   = editor.media_strip.clone();
         let date_btn = editor.date_btn.clone();
         Rc::new(move |id: &str| {
             let data = {
@@ -174,10 +175,11 @@ pub fn build_window(app: &adw::Application) {
             state.borrow_mut().suppress_change = false;
             while let Some(c) = mbox.first_child() { mbox.remove(&c); }
             for item in &media {
-                if let Some(t) = make_deletable_thumb(item, Rc::clone(&state), id.to_string(), item.id.clone()) {
+                if let Some(t) = make_deletable_thumb(item, Rc::clone(&state), id.to_string(), item.id.clone(), mstrip.clone()) {
                     mbox.append(&t);
                 }
             }
+            mstrip.set_visible(!media.is_empty());
         })
     };
 
@@ -496,9 +498,10 @@ pub fn build_window(app: &adw::Application) {
 
     // ── Wire: Media attach ─────────────────────────────────────────────────
     {
-        let state = Rc::clone(&state);
-        let mbox2 = editor.media_box.clone();
-        let win2  = window.clone();
+        let state  = Rc::clone(&state);
+        let mbox2  = editor.media_box.clone();
+        let mstrip = editor.media_strip.clone();
+        let win2   = window.clone();
         editor.attach_btn.connect_clicked(move |_| {
             let filters = gio::ListStore::new::<gtk4::FileFilter>();
             let f = gtk4::FileFilter::new();
@@ -507,8 +510,9 @@ pub fn build_window(app: &adw::Application) {
             f.add_mime_type("video/*");
             filters.append(&f);
             let fd = gtk4::FileDialog::builder().title("Attach Media").filters(&filters).build();
-            let state2 = Rc::clone(&state);
-            let mbox3  = mbox2.clone();
+            let state2  = Rc::clone(&state);
+            let mbox3   = mbox2.clone();
+            let mstrip2 = mstrip.clone();
             fd.open(Some(&win2), None::<&gio::Cancellable>, move |result| {
                 let Ok(file) = result else { return; };
                 let Some(path) = file.path() else { return; };
@@ -523,7 +527,7 @@ pub fn build_window(app: &adw::Application) {
                 let media_id = item.id.clone();
                 let eid = state2.borrow().current_entry_id.clone();
                 if let Some(id) = eid {
-                    let thumb = make_deletable_thumb(&item, Rc::clone(&state2), id.clone(), media_id);
+                    let thumb = make_deletable_thumb(&item, Rc::clone(&state2), id.clone(), media_id, mstrip2.clone());
                     {
                         let mut st = state2.borrow_mut();
                         if let Some(v) = st.vault.as_mut() {
@@ -533,7 +537,10 @@ pub fn build_window(app: &adw::Application) {
                             let _ = v.save();
                         }
                     }
-                    if let Some(t) = thumb { mbox3.append(&t); }
+                    if let Some(t) = thumb {
+                        mbox3.append(&t);
+                        mstrip2.set_visible(true);
+                    }
                 }
             });
         });
@@ -952,16 +959,17 @@ fn build_sidebar() -> SidebarWidgets {
 }
 
 struct EditorWidgets {
-    outer:      gtk4::Box,
-    stack:      gtk4::Stack,
-    title:      gtk4::Entry,
-    body:       gtk4::TextView,
-    media_box:  gtk4::Box,
-    attach_btn: gtk4::Button,
-    delete_btn: gtk4::Button,
-    date_btn:   gtk4::Button,
-    font_btn:   gtk4::Button,
-    lh_btn:     gtk4::Button,
+    outer:       gtk4::Box,
+    stack:       gtk4::Stack,
+    title:       gtk4::Entry,
+    body:        gtk4::TextView,
+    media_box:   gtk4::Box,
+    media_strip: gtk4::Box,
+    attach_btn:  gtk4::Button,
+    delete_btn:  gtk4::Button,
+    date_btn:    gtk4::Button,
+    font_btn:    gtk4::Button,
+    lh_btn:      gtk4::Button,
 }
 
 fn build_editor() -> EditorWidgets {
@@ -1031,18 +1039,22 @@ fn build_editor() -> EditorWidgets {
         .vscrollbar_policy(gtk4::PolicyType::Never)
         .child(&media_box).build();
 
+    let media_strip = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    media_strip.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
+    media_strip.append(&media_scroll);
+    media_strip.set_visible(false);
+
     evbox.append(&title_bar);
     evbox.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
     evbox.append(&body_scroll);
-    evbox.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
-    evbox.append(&media_scroll);
+    evbox.append(&media_strip);
 
     stack.add_named(&evbox, Some("editor"));
     stack.set_visible_child_name("empty");
     outer.append(&stack);
 
     EditorWidgets { outer, stack, title: title_entry, body: body_view,
-                    media_box, attach_btn, delete_btn, date_btn, font_btn, lh_btn }
+                    media_box, media_strip, attach_btn, delete_btn, date_btn, font_btn, lh_btn }
 }
 
 struct BottomBarWidgets {
@@ -1169,10 +1181,11 @@ fn make_entry_row(entry: &crate::vault::types::Entry) -> gtk4::ListBoxRow {
 }
 
 fn make_deletable_thumb(
-    item:     &MediaItem,
-    state:    Rc<RefCell<AppState>>,
-    entry_id: String,
-    media_id: String,
+    item:        &MediaItem,
+    state:       Rc<RefCell<AppState>>,
+    entry_id:    String,
+    media_id:    String,
+    media_strip: gtk4::Box,
 ) -> Option<gtk4::Widget> {
     let thumb   = make_media_thumb(item)?;
     let overlay = gtk4::Overlay::new();
@@ -1196,7 +1209,11 @@ fn make_deletable_thumb(
                 let _ = v.save();
             }
         }
+        let parent = ov2.parent();
         ov2.unparent();
+        if parent.map(|p| p.first_child().is_none()).unwrap_or(false) {
+            media_strip.set_visible(false);
+        }
     });
 
     overlay.add_overlay(&del_btn);
