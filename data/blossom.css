@@ -1,0 +1,487 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Blossom — tokens substituted at runtime by AppSettings::css()
+     BLOSSOM_ACCENT / BLOSSOM_AL / BLOSSOM_AB / BLOSSOM_ARGB
+     BLOSSOM_BG / BLOSSOM_SURF / BLOSSOM_INPUT
+     BLOSSOM_FG / BLOSSOM_FG2 / BLOSSOM_FG3
+     BLOSSOM_BORDER_RGB
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+
+window, .background {
+  background-color: BLOSSOM_BG;
+  color: BLOSSOM_FG;
+}
+
+/* ── Header bar ─────────────────────────────────────────────────────────── */
+
+headerbar {
+  background-color: BLOSSOM_SURF;
+  border-bottom: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.18);
+  box-shadow: 0 1px 3px rgba(BLOSSOM_BORDER_RGB, 0.08);
+  color: BLOSSOM_FG;
+  min-height: 44px;
+}
+
+.blossom-title {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  color: BLOSSOM_FG;
+}
+
+.vault-chip {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  color: BLOSSOM_ACCENT;
+  padding: 2px 10px;
+  border: 1px solid rgba(BLOSSOM_ARGB, 0.30);
+  border-radius: 100px;
+  background-color: BLOSSOM_AB;
+}
+
+.home-button {
+  color: BLOSSOM_FG2;
+  border-radius: 8px;
+  padding: 4px 10px;
+  border: 1px solid rgba(BLOSSOM_ARGB, 0.22);
+  background-color: transparent;
+  font-size: 12px;
+}
+.home-button:hover {
+  background-color: BLOSSOM_AB;
+  color: BLOSSOM_ACCENT;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+
+.sidebar {
+  background-color: BLOSSOM_SURF;
+  border-right: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.12);
+  min-width: 260px;
+}
+
+.sidebar-header {
+  padding: 12px 12px 6px 16px;
+  background-color: BLOSSOM_SURF;
+}
+
+.vault-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: BLOSSOM_ACCENT;
+}
+
+.new-entry-icon {
+  padding: 4px;
+  color: BLOSSOM_ACCENT;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  border: none;
+}
+.new-entry-icon:hover {
+  background-color: rgba(BLOSSOM_ARGB, 0.10);
+}
+
+.sidebar-search {
+  margin: 4px 10px 8px;
+  background-color: BLOSSOM_INPUT;
+  border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.18);
+  border-radius: 8px;
+  color: BLOSSOM_FG;
+  caret-color: BLOSSOM_ACCENT;
+  padding: 6px 10px;
+}
+.sidebar-search:focus {
+  border-color: rgba(BLOSSOM_ARGB, 0.45);
+  box-shadow: 0 0 0 3px rgba(BLOSSOM_ARGB, 0.10);
+}
+.sidebar-search placeholder {
+  color: BLOSSOM_FG3;
+}
+
+/* ── Entry list rows ────────────────────────────────────────────────────── */
+
+.entry-list {
+  background-color: transparent;
+}
+.entry-list > row {
+  background-color: transparent;
+}
+.entry-row {
+  border-radius: 8px;
+  margin: 1px 6px;
+  transition: background-color 100ms ease-out;
+  background-color: transparent;
+}
+.entry-row:hover {
+  background-color: rgba(BLOSSOM_ARGB, 0.08);
+}
+.entry-row:selected,
+.entry-row.selected {
+  background-color: rgba(BLOSSOM_ARGB, 0.12);
+  box-shadow: inset 2px 0 0 BLOSSOM_ACCENT;
+}
+.entry-title-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: BLOSSOM_FG;
+}
+.entry-date-label {
+  font-size: 11px;
+  color: BLOSSOM_FG2;
+  margin-top: 1px;
+}
+
+/* ── Editor area ────────────────────────────────────────────────────────── */
+
+.editor-area {
+  background-color: BLOSSOM_BG;
+}
+
+.editor-title-bar {
+  padding: 24px 24px 10px 48px;
+  background-color: transparent;
+}
+
+.editor-title {
+  font-size: 22px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: BLOSSOM_FG;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  caret-color: BLOSSOM_ACCENT;
+}
+.editor-title:focus { box-shadow: none; }
+.editor-title placeholder {
+  color: BLOSSOM_FG3;
+  font-weight: 300;
+}
+
+.entry-date-btn {
+  font-size: 11px;
+  color: BLOSSOM_FG2;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.entry-date-btn:hover {
+  background-color: BLOSSOM_AB;
+  border-color: rgba(BLOSSOM_ARGB, 0.22);
+  color: BLOSSOM_ACCENT;
+}
+
+textview.editor-body {
+  background-color: BLOSSOM_BG;
+  color: BLOSSOM_FG;
+  caret-color: BLOSSOM_ACCENT;
+  font-family: Georgia, serif;
+  font-size: 16pt;
+  line-height: 1.75;
+}
+textview.editor-body > text {
+  background-color: BLOSSOM_BG;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+
+.empty-icon  { color: BLOSSOM_FG3; }
+.empty-label {
+  font-size: 14px;
+  color: BLOSSOM_FG3;
+  font-weight: 300;
+}
+
+/* ── Media strip ────────────────────────────────────────────────────────── */
+
+.media-strip { min-height: 100px; }
+.media-thumb {
+  border-radius: 8px;
+  border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.15);
+  box-shadow: 0 2px 6px rgba(BLOSSOM_BORDER_RGB, 0.08);
+}
+
+.media-delete-btn {
+  min-width: 18px;
+  min-height: 18px;
+  padding: 1px;
+  border-radius: 50%;
+  background-color: rgba(0,0,0,0.55) !important;
+  background-image: none !important;
+  color: #ffffff;
+  border: none;
+  margin: 3px;
+}
+.media-delete-btn:hover {
+  background-color: rgba(180,40,40,0.85) !important;
+}
+
+/* ── Bottom bar ─────────────────────────────────────────────────────────── */
+
+.bottom-bar {
+  background-color: BLOSSOM_SURF;
+}
+
+/* ── Noise panel ────────────────────────────────────────────────────────── */
+
+.noise-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: BLOSSOM_FG3;
+}
+.noise-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: BLOSSOM_FG2;
+  min-width: 20px;
+}
+
+scale.noise-slider trough {
+  background-color: rgba(BLOSSOM_ARGB, 0.12);
+  border-radius: 3px;
+  min-height: 3px;
+}
+scale.noise-slider trough highlight {
+  background-color: BLOSSOM_ACCENT;
+  border-radius: 3px;
+}
+scale.noise-slider slider {
+  background-color: BLOSSOM_ACCENT;
+  min-width: 13px;
+  min-height: 13px;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(BLOSSOM_ARGB, 0.40);
+  border: none;
+}
+scale.noise-slider slider:hover {
+  box-shadow: 0 0 0 4px rgba(BLOSSOM_ARGB, 0.16), 0 1px 4px rgba(BLOSSOM_ARGB, 0.40);
+}
+
+/* ── MPRIS bar ──────────────────────────────────────────────────────────── */
+
+.mpris-title  { font-size: 12px; font-weight: 500; color: BLOSSOM_FG; }
+.mpris-artist { font-size: 10px; color: BLOSSOM_FG2; }
+
+.mpris-button {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background-color: transparent;
+  border: 1px solid rgba(BLOSSOM_ARGB, 0.22);
+  color: BLOSSOM_ACCENT;
+  min-width: 0; min-height: 0;
+}
+.mpris-button:hover {
+  background-color: rgba(BLOSSOM_ARGB, 0.10);
+  border-color: rgba(BLOSSOM_ARGB, 0.40);
+}
+.mpris-button:active {
+  background-color: rgba(BLOSSOM_ARGB, 0.18);
+}
+
+/* ── Home screen ────────────────────────────────────────────────────────── */
+
+.home-page {
+  background-color: BLOSSOM_BG;
+}
+
+.home-title {
+  font-size: 38px;
+  font-weight: 200;
+  letter-spacing: 0.24em;
+  color: BLOSSOM_FG;
+}
+
+.home-subtitle {
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: BLOSSOM_FG3;
+  font-weight: 300;
+}
+
+.home-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: BLOSSOM_ACCENT;
+}
+
+.journal-card {
+  background-color: BLOSSOM_SURF;
+  border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.16);
+  border-radius: 12px;
+  min-width: 400px;
+}
+.journal-card:hover {
+  border-color: rgba(BLOSSOM_ARGB, 0.30);
+}
+
+.journal-card-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: BLOSSOM_FG;
+}
+.journal-card-meta {
+  font-size: 11px;
+  color: BLOSSOM_FG2;
+  margin-top: 2px;
+}
+
+.new-journal-button {
+  background-color: BLOSSOM_ACCENT;
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 13px;
+  border-radius: 10px;
+  padding: 10px 24px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(BLOSSOM_ARGB, 0.30);
+}
+.new-journal-button:hover {
+  background-color: BLOSSOM_AL;
+  box-shadow: 0 4px 14px rgba(BLOSSOM_ARGB, 0.40);
+}
+
+/* ── Dialogs ────────────────────────────────────────────────────────────── */
+
+.message-dialog { background-color: BLOSSOM_BG; }
+
+/* ── Generic entries ────────────────────────────────────────────────────── */
+
+entry {
+  background-color: BLOSSOM_INPUT;
+  border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.18);
+  border-radius: 8px;
+  color: BLOSSOM_FG;
+  caret-color: BLOSSOM_ACCENT;
+}
+entry:focus {
+  border-color: rgba(BLOSSOM_ARGB, 0.50);
+  box-shadow: 0 0 0 3px rgba(BLOSSOM_ARGB, 0.10);
+}
+entry placeholder { color: BLOSSOM_FG3; }
+
+passwordentry {
+  background-color: BLOSSOM_INPUT;
+  border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.18);
+  border-radius: 8px;
+  color: BLOSSOM_FG;
+}
+passwordentry:focus {
+  border-color: rgba(BLOSSOM_ARGB, 0.50);
+  box-shadow: 0 0 0 3px rgba(BLOSSOM_ARGB, 0.10);
+}
+
+/* ── Error ──────────────────────────────────────────────────────────────── */
+
+label.error { color: #d63031; font-size: 12px; }
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+
+scrollbar { background-color: transparent; }
+scrollbar slider {
+  background-color: rgba(BLOSSOM_BORDER_RGB, 0.22);
+  border-radius: 3px;
+  min-width: 4px; min-height: 4px;
+  margin: 2px;
+}
+scrollbar slider:hover {
+  background-color: rgba(BLOSSOM_BORDER_RGB, 0.40);
+}
+
+/* ── Separators ─────────────────────────────────────────────────────────── */
+
+separator { background-color: rgba(BLOSSOM_BORDER_RGB, 0.12); min-height: 1px; }
+
+/* ── Flat / icon buttons ────────────────────────────────────────────────── */
+
+button.flat {
+  background-color: transparent;
+  border: none;
+  color: BLOSSOM_FG2;
+  border-radius: 8px;
+}
+button.flat:hover {
+  background-color: rgba(BLOSSOM_ARGB, 0.08);
+  color: BLOSSOM_ACCENT;
+}
+button.flat.destructive-action { color: #d63031; }
+button.flat.destructive-action:hover { background-color: rgba(214, 48, 49, 0.10); }
+
+/* ── Paned handle ───────────────────────────────────────────────────────── */
+
+paned > separator {
+  background-color: rgba(BLOSSOM_BORDER_RGB, 0.12);
+  min-width: 1px;
+}
+
+/* ── dim-label ──────────────────────────────────────────────────────────── */
+
+label.dim-label { font-size: 11px; color: BLOSSOM_FG2; }
+
+/* ── Popovers ───────────────────────────────────────────────────────────── */
+
+popover > contents {
+  background-color: BLOSSOM_SURF;
+  border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.16);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(BLOSSOM_BORDER_RGB, 0.18);
+  padding: 4px;
+}
+
+/* ── Color swatch buttons ───────────────────────────────────────────────── */
+
+.color-swatch {
+  border-radius: 50%;
+  min-width: 28px;
+  min-height: 28px;
+  border: 2px solid transparent;
+  padding: 0;
+}
+.color-swatch:hover  { border-color: rgba(BLOSSOM_BORDER_RGB, 0.30); }
+.color-swatch.selected { border-color: rgba(BLOSSOM_BORDER_RGB, 0.60); }
+
+button.swatch-cherry,
+button.swatch-wisteria,
+button.swatch-moss,
+button.swatch-dusk,
+button.swatch-ember,
+button.swatch-mono     { background-image: none !important; }
+
+button.swatch-cherry   { background-color: #c55a74 !important; }
+button.swatch-wisteria { background-color: #7b5ea7 !important; }
+button.swatch-moss     { background-color: #4a7c59 !important; }
+button.swatch-dusk     { background-color: #4a6fa5 !important; }
+button.swatch-ember    { background-color: #c05c2a !important; }
+button.swatch-mono     { background-color: #505050 !important; }
+
+/* ── Calendar ───────────────────────────────────────────────────────────── */
+
+calendar {
+  background-color: BLOSSOM_SURF;
+  color: BLOSSOM_FG;
+  border-radius: 8px;
+}
+calendar:selected {
+  background-color: BLOSSOM_ACCENT;
+  color: #ffffff;
+  border-radius: 50%;
+}
+
+/* ── DropDown ───────────────────────────────────────────────────────────── */
+
+dropdown, dropdownbutton {
+  background-color: BLOSSOM_INPUT;
+  border: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.18);
+  border-radius: 8px;
+  color: BLOSSOM_FG;
+}

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Blossom
+GenericName=Encrypted Journal
+Comment=A private, encrypted journal with ambient sound
+Exec=blossom
+Icon=com.blossom.journal
+Terminal=false
+Categories=Office;
+Keywords=journal;diary;notes;encrypted;private;
+StartupWMClass=blossom
+StartupNotify=true

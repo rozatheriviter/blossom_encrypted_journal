@@ -1,0 +1,42 @@
+[package]
+name = "blossom"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "blossom"
+path = "src/main.rs"
+
+[dependencies]
+# GTK / GNOME
+gtk4       = { version = "0.9", features = ["v4_12"] }
+libadwaita = { version = "0.7", features = ["v1_5"] }
+glib       = "0.20"
+gio        = "0.20"
+gdk4       = "0.9"
+
+# Crypto
+aes-gcm = "0.10"
+scrypt  = "0.11"
+rand    = "0.8"
+
+# Serialisation
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64     = "0.22"
+
+# Identifiers & time
+uuid   = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+hex    = "0.4"
+
+# Audio (cpal uses system ALSA / PipeWire)
+cpal = "0.15"
+
+# D-Bus / MPRIS (async-io runtime, no tokio dependency)
+zbus     = { version = "4", default-features = false, features = ["async-io"] }
+async-io = "2"
+
+# Utilities
+anyhow   = "1"
+dirs     = "5"
