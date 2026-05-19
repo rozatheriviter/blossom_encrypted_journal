@@ -1172,7 +1172,7 @@ fn make_entry_row(entry: &crate::vault::types::Entry) -> gtk4::ListBoxRow {
     vbox.append(&gtk4::Label::builder()
         .label(display).css_classes(["entry-title-label"])
         .halign(gtk4::Align::Start).ellipsize(gtk4::pango::EllipsizeMode::End).single_line_mode(true).build());
-    let date = chrono::DateTime::parse_from_rfc3339(&entry.updated)
+    let date = chrono::DateTime::parse_from_rfc3339(&entry.created)
         .map(|dt| dt.format("%-d %b %Y").to_string()).unwrap_or_else(|_| "—".into());
     vbox.append(&gtk4::Label::builder()
         .label(&date).css_classes(["entry-date-label"]).halign(gtk4::Align::Start).build());
