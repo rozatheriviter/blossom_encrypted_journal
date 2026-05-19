@@ -59,7 +59,6 @@ headerbar {
 .sidebar {
   background-color: BLOSSOM_SURF;
   border-right: 1px solid rgba(BLOSSOM_BORDER_RGB, 0.12);
-  min-width: 260px;
 }
 
 .sidebar-header {

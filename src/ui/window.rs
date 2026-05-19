@@ -65,6 +65,12 @@ pub fn build_window(app: &adw::Application) {
     // ── Header — title + vault chip + home button only ──────────────────────
     let header = adw::HeaderBar::new();
 
+    let sidebar_toggle = gtk4::ToggleButton::builder()
+        .icon_name("sidebar-show-symbolic")
+        .visible(false)
+        .build();
+    header.pack_start(&sidebar_toggle);
+
     let title_label = gtk4::Label::builder()
         .label("blossom")
         .css_classes(["blossom-title"])
@@ -95,19 +101,20 @@ pub fn build_window(app: &adw::Application) {
     home_page.set_vexpand(true);
     main_stack.add_named(&home_page, Some("home"));
 
-    let paned = gtk4::Paned::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .position(260)
-        .wide_handle(false)
-        .build();
-    let sidebar = build_sidebar();
-    paned.set_start_child(Some(&sidebar.outer));
-    let editor = build_editor();
-    paned.set_end_child(Some(&editor.outer));
+    let split_view = adw::OverlaySplitView::new();
+    split_view.set_min_sidebar_width(260.0);
+    split_view.set_max_sidebar_width(320.0);
 
-    // Editor page is just the paned — bottom bar lives in ToolbarView now
+    let sidebar = build_sidebar();
+    split_view.set_sidebar(Some(&sidebar.outer));
+    let editor = build_editor();
+    split_view.set_content(Some(&editor.outer));
+
+    // Editor page is just the split_view — bottom bar lives in ToolbarView now
     let editor_page = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    editor_page.append(&paned);
+    editor_page.set_vexpand(true);
+    editor_page.set_hexpand(true);
+    editor_page.append(&split_view);
     main_stack.add_named(&editor_page, Some("editor"));
 
     // Bottom bar is always visible (outside the stack)
@@ -115,8 +122,15 @@ pub fn build_window(app: &adw::Application) {
 
     let root_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     let toolbar_view = adw::ToolbarView::new();
+    toolbar_view.set_vexpand(true);
+    toolbar_view.set_hexpand(true);
     toolbar_view.add_top_bar(&header);
     toolbar_view.set_content(Some(&main_stack));
+
+    sidebar_toggle.bind_property("active", &split_view, "show-sidebar")
+        .bidirectional()
+        .sync_create()
+        .build();
 
     root_box.append(&toolbar_view);
     root_box.append(&bottom_bar.outer);
@@ -128,12 +142,15 @@ pub fn build_window(app: &adw::Application) {
         adw::LengthUnit::Px,
     ));
     breakpoint.add_setter(&root_box, "orientation", Some(&gtk4::Orientation::Horizontal.to_value()));
+    breakpoint.add_setter(&split_view, "collapsed", Some(&true.to_value()));
+    breakpoint.add_setter(&sidebar_toggle, "visible", Some(&true.to_value()));
+    breakpoint.add_setter(&title_label, "visible", Some(&false.to_value()));
     breakpoint.add_setter(&bottom_bar.sep_h, "visible", Some(&false.to_value()));
     breakpoint.add_setter(&bottom_bar.sep_v, "visible", Some(&true.to_value()));
     breakpoint.add_setter(&bottom_bar.inner, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
     breakpoint.add_setter(&bottom_bar.inner, "width-request", Some(&60.to_value()));
-    breakpoint.add_setter(&bottom_bar.inner, "margin-start", Some(&4.to_value()));
-    breakpoint.add_setter(&bottom_bar.inner, "margin-end", Some(&4.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "margin-start", Some(&0.to_value()));
+    breakpoint.add_setter(&bottom_bar.inner, "margin-end", Some(&0.to_value()));
     breakpoint.add_setter(&bottom_bar.noise_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
     breakpoint.add_setter(&bottom_bar.noise_box, "spacing", Some(&12.to_value()));
     breakpoint.add_setter(&bottom_bar.config_box, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
@@ -142,6 +159,9 @@ pub fn build_window(app: &adw::Application) {
     breakpoint.add_setter(&bottom_bar.track_label, "max-width-chars", Some(&6.to_value()));
     breakpoint.add_setter(&bottom_bar.artist_label, "max-width-chars", Some(&6.to_value()));
     breakpoint.add_setter(&bottom_bar.spacer, "visible", Some(&false.to_value()));
+    breakpoint.add_setter(&editor.body, "left-margin", Some(&12.to_value()));
+    breakpoint.add_setter(&editor.body, "right-margin", Some(&12.to_value()));
+    breakpoint.add_setter(&editor.title, "margin-start", Some(&12.to_value()));
     window.add_breakpoint(breakpoint);
 
     // ── Closures (defined in dependency order) ──────────────────────────────
@@ -926,7 +946,6 @@ struct SidebarWidgets {
 fn build_sidebar() -> SidebarWidgets {
     let outer = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     outer.add_css_class("sidebar");
-    outer.set_width_request(260);
 
     let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     header.add_css_class("sidebar-header");
