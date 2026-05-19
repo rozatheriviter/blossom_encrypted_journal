@@ -4,14 +4,14 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use base64::Engine as _;
-use chrono::Datelike;
+use chrono::{Datelike, Timelike};
 use gtk4::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 
 use crate::audio::{NoiseMix, NoiseEngine};
 use crate::mpris::MprisWatcher;
-use crate::settings::{Accent, AppSettings};
+use crate::settings::AppSettings;
 use crate::vault::{self, Vault};
 use crate::vault::types::MediaItem;
 use crate::ui::vault_dialog as dlg;
@@ -159,7 +159,8 @@ pub fn build_window(app: &adw::Application) {
     breakpoint.add_setter(&bottom_bar.mpris_btns, "orientation", Some(&gtk4::Orientation::Vertical.to_value()));
     breakpoint.add_setter(&bottom_bar.track_label, "max-width-chars", Some(&6.to_value()));
     breakpoint.add_setter(&bottom_bar.artist_label, "max-width-chars", Some(&6.to_value()));
-    breakpoint.add_setter(&bottom_bar.spacer, "visible", Some(&false.to_value()));
+    breakpoint.add_setter(&bottom_bar.spacer, "visible", Some(&true.to_value()));
+    breakpoint.add_setter(&bottom_bar.spacer, "vexpand", Some(&true.to_value()));
     breakpoint.add_setter(&editor.body, "left-margin", Some(&12.to_value()));
     breakpoint.add_setter(&editor.body, "right-margin", Some(&12.to_value()));
     breakpoint.add_setter(&editor.title, "margin-start", Some(&12.to_value()));
@@ -216,7 +217,7 @@ pub fn build_window(app: &adw::Application) {
             ebody.buffer().set_text(&body);
             apply_font(&ebody, &fam, sz, &wt, lh);
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&created) {
-                date_btn.set_label(&dt.format("%-d %b %Y").to_string());
+                date_btn.set_label(&dt.format("%-d %b %Y, %H:%M").to_string());
             }
             state.borrow_mut().suppress_change = false;
             while let Some(c) = mbox.first_child() { mbox.remove(&c); }
@@ -437,7 +438,23 @@ pub fn build_window(app: &adw::Application) {
             let Some(id) = id else { return; };
             let popover = gtk4::Popover::new();
             popover.set_parent(btn);
+
+            let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+            vbox.set_margin_start(8); vbox.set_margin_end(8);
+            vbox.set_margin_top(8);   vbox.set_margin_bottom(8);
+
             let cal = gtk4::Calendar::new();
+            vbox.append(&cal);
+
+            let time_hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
+            time_hbox.set_halign(gtk4::Align::Center);
+            let spin_h = gtk4::SpinButton::with_range(0.0, 23.0, 1.0);
+            let spin_m = gtk4::SpinButton::with_range(0.0, 59.0, 1.0);
+            time_hbox.append(&spin_h);
+            time_hbox.append(&gtk4::Label::new(Some(":")));
+            time_hbox.append(&spin_m);
+            vbox.append(&time_hbox);
+
             {
                 let st = state.borrow();
                 if let Some(v) = &st.vault {
@@ -446,25 +463,46 @@ pub fn build_window(app: &adw::Application) {
                             cal.set_property("year",  dt.year());
                             cal.set_property("month", dt.month() as i32 - 1);
                             cal.set_property("day",   dt.day() as i32);
+                            spin_h.set_value(dt.hour() as f64);
+                            spin_m.set_value(dt.minute() as f64);
                         }
                     }
                 }
             }
+
             let state2 = Rc::clone(&state);
             let db3    = date_btn2.clone();
-            cal.connect_day_selected(move |c| {
-                let y = c.year(); let m = c.month() + 1; let d = c.day();
-                let s = format!("{y:04}-{m:02}-{d:02}T00:00:00+00:00");
+            let id2    = id.clone();
+            let cal2   = cal.clone();
+            let sh2    = spin_h.clone();
+            let sm2    = spin_m.clone();
+
+            let update_date = move || {
+                let y = cal2.year();
+                let m = cal2.month() + 1;
+                let d = cal2.day();
+                let h = sh2.value() as u32;
+                let min = sm2.value() as u32;
+                let s = format!("{y:04}-{m:02}-{d:02}T{h:02}:{min:02}:00+00:00");
                 let mut st = state2.borrow_mut();
                 if let Some(v) = st.vault.as_mut() {
-                    if let Some(e) = v.get_entry_mut(&id) { e.created = s.clone(); }
+                    if let Some(e) = v.get_entry_mut(&id2) { e.created = s.clone(); }
                     let _ = v.save();
                 }
                 if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&s) {
-                    db3.set_label(&dt.format("%-d %b %Y").to_string());
+                    db3.set_label(&dt.format("%-d %b %Y, %H:%M").to_string());
                 }
-            });
-            popover.set_child(Some(&cal));
+            };
+
+            let u1 = Rc::new(update_date);
+            let u2 = Rc::clone(&u1);
+            let u3 = Rc::clone(&u1);
+
+            cal.connect_day_selected(move |_| u1());
+            spin_h.connect_value_changed(move |_| u2());
+            spin_m.connect_value_changed(move |_| u3());
+
+            popover.set_child(Some(&vbox));
             popover.popup();
         });
     }
@@ -633,42 +671,6 @@ pub fn build_window(app: &adw::Application) {
         });
     }
 
-    // ── Wire: Accent color (bottom bar) ───────────────────────────────────
-    {
-        let state = Rc::clone(&state);
-        let cp3   = css_provider.clone();
-        let _abtn = bottom_bar.accent_btn.clone();
-        bottom_bar.accent_btn.connect_clicked(move |btn| {
-            let popover = gtk4::Popover::new();
-            popover.set_parent(btn);
-            let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
-            hbox.set_margin_start(10); hbox.set_margin_end(10);
-            hbox.set_margin_top(10);   hbox.set_margin_bottom(10);
-            let current = state.borrow().settings.accent;
-            for &accent in Accent::ALL {
-                let c   = accent.colors();
-                let btn = gtk4::Button::new();
-                btn.add_css_class("color-swatch");
-                if accent == current { btn.add_css_class("selected"); }
-                btn.set_tooltip_text(Some(c.label));
-                btn.add_css_class(&format!("swatch-{}", c.label.to_lowercase()));
-                let st2  = Rc::clone(&state);
-                let cp4  = cp3.clone();
-                let pop2 = popover.clone();
-                btn.connect_clicked(move |_| {
-                    let mut st = st2.borrow_mut();
-                    st.settings.accent = accent;
-                    let _ = st.settings.save();
-                    cp4.load_from_string(&st.settings.css());
-                    drop(st);
-                    pop2.popdown();
-                });
-                hbox.append(&btn);
-            }
-            popover.set_child(Some(&hbox));
-            popover.popup();
-        });
-    }
 
     // ── Wire: MPRIS poll ───────────────────────────────────────────────────
     {
@@ -1209,7 +1211,6 @@ struct BottomBarWidgets {
     brown_scale:  gtk4::Scale,
     master_scale: gtk4::Scale,
     dark_btn:     gtk4::Button,
-    accent_btn:   gtk4::Button,
     track_label:  gtk4::Label,
     artist_label: gtk4::Label,
     prev_btn:     gtk4::Button,
@@ -1247,12 +1248,7 @@ fn build_bottom_bar() -> BottomBarWidgets {
         .icon_name("weather-clear-night-symbolic")
         .tooltip_text("Toggle dark mode")
         .css_classes(["flat"]).build();
-    let accent_btn = gtk4::Button::builder()
-        .icon_name("preferences-color-symbolic")
-        .tooltip_text("Accent color")
-        .css_classes(["flat"]).build();
     config_box.append(&dark_btn);
-    config_box.append(&accent_btn);
 
     // MPRIS
     let mpris_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -1278,8 +1274,8 @@ fn build_bottom_bar() -> BottomBarWidgets {
     mpris_box.append(&mpris_btns);
 
     inner.append(&noise_box);
-    inner.append(&spacer);
     inner.append(&config_box);
+    inner.append(&spacer);
     inner.append(&mpris_box);
 
     let main_content = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
@@ -1292,7 +1288,7 @@ fn build_bottom_bar() -> BottomBarWidgets {
     BottomBarWidgets {
         outer, inner, noise_box, config_box, mpris_box, mpris_btns, spacer, sep_h, sep_v,
         white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms,
-        dark_btn, accent_btn,
+        dark_btn,
         track_label, artist_label, prev_btn, play_btn, next_btn,
     }
 }
@@ -1331,7 +1327,7 @@ fn make_entry_row(entry: &crate::vault::types::Entry) -> gtk4::ListBoxRow {
         .label(display).css_classes(["entry-title-label"])
         .halign(gtk4::Align::Start).ellipsize(gtk4::pango::EllipsizeMode::End).single_line_mode(true).build());
     let date = chrono::DateTime::parse_from_rfc3339(&entry.created)
-        .map(|dt| dt.format("%-d %b %Y").to_string()).unwrap_or_else(|_| "—".into());
+        .map(|dt| dt.format("%-d %b %Y, %H:%M").to_string()).unwrap_or_else(|_| "—".into());
     vbox.append(&gtk4::Label::builder()
         .label(&date).css_classes(["entry-date-label"]).halign(gtk4::Align::Start).build());
     row.set_child(Some(&vbox));
