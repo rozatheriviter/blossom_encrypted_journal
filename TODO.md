@@ -4,7 +4,7 @@
 - [ ] Export journal — export as plain text/markdown (decrypted) or as an encrypted backup (.vault file)
 - [ ] Import journal — import a plaintext/markdown export back into a vault, or restore an encrypted .vault backup
 - [ ] Word count — live word / character counter in the editor ✓
-- [ ] Distraction-free mode — collapse sidebar and bottom bar, leaving just the text ✓
+- [ ] Distraction-free mode — collapse sidebar and bottom bar, leaving just the text
 - [ ] Auto-lock — lock the vault after N minutes of inactivity
 - [ ] Keyboard shortcuts — Ctrl+N new entry, Ctrl+F search, Ctrl+, font settings ✓
 - [ ] Export entry — save a single entry as .txt or .md ✓

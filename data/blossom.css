@@ -435,12 +435,6 @@ label.dim-label { font-size: 11px; color: BLOSSOM_FG2; }
   letter-spacing: 0.04em;
 }
 
-/* ── Distraction-free toggle ────────────────────────────────────────────── */
-
-togglebutton.flat:checked {
-  background-color: rgba(BLOSSOM_ARGB, 0.12);
-  color: BLOSSOM_ACCENT;
-}
 
 /* ── Popovers ───────────────────────────────────────────────────────────── */
 

@@ -91,12 +91,6 @@ pub fn build_window(app: &adw::Application) {
         .build();
     header.pack_start(&home_btn);
 
-    let zen_btn = gtk4::ToggleButton::builder()
-        .icon_name("eye-not-looking-symbolic")
-        .tooltip_text("Distraction-free mode (Ctrl+D)")
-        .css_classes(["flat"])
-        .build();
-    header.pack_end(&zen_btn);
 
     // ── Stacks ─────────────────────────────────────────────────────────────
     let main_stack = gtk4::Stack::new();
@@ -356,11 +350,9 @@ pub fn build_window(app: &adw::Application) {
         let vc2  = vault_chip.clone();
         let hb2  = home_btn.clone();
         let rh2  = Rc::clone(&refresh_home);
-        let zb2  = zen_btn.clone();
         home_btn.connect_clicked(move |_| {
             vc2.set_visible(false);
             hb2.set_visible(false);
-            zb2.set_active(false);
             rh2();
             ms2.set_visible_child_name("home");
         });
@@ -838,27 +830,11 @@ pub fn build_window(app: &adw::Application) {
         });
     }
 
-    // ── Wire: Distraction-free mode ────────────────────────────────────────
-    {
-        let sv3  = split_view.clone();
-        let bbo  = bottom_bar.outer.clone();
-        let st3  = sidebar_toggle.clone();
-        zen_btn.connect_toggled(move |btn| {
-            let zen = btn.is_active();
-            bbo.set_visible(!zen);
-            if zen {
-                sv3.set_show_sidebar(false);
-                st3.set_active(false);
-            }
-        });
-    }
-
     // ── Wire: Keyboard shortcuts ───────────────────────────────────────────
     {
         let new_btn2 = sidebar.new_btn.clone();
         let search2  = sidebar.search.clone();
         let font2    = editor.font_btn.clone();
-        let zen2     = zen_btn.clone();
         let ms3      = main_stack.clone();
         let key_ctrl = gtk4::EventControllerKey::new();
         key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
@@ -870,14 +846,6 @@ pub fn build_window(app: &adw::Application) {
                 (true, Key::n) if in_editor     => { new_btn2.emit_clicked(); glib::Propagation::Stop }
                 (true, Key::f) if in_editor     => { search2.grab_focus();    glib::Propagation::Stop }
                 (true, Key::comma) if in_editor => { font2.emit_clicked();     glib::Propagation::Stop }
-                (true, Key::d) => {
-                    zen2.set_active(!zen2.is_active());
-                    glib::Propagation::Stop
-                }
-                (false, Key::Escape) if zen2.is_active() => {
-                    zen2.set_active(false);
-                    glib::Propagation::Stop
-                }
                 _ => glib::Propagation::Proceed,
             }
         });
