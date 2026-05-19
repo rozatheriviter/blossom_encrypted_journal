@@ -14,12 +14,16 @@ DATA_DIR="$PREFIX/share"
 
 ICON_DIR="$DATA_DIR/icons/hicolor/scalable/apps"
 DESKTOP_DIR="$DATA_DIR/applications"
+ICON_SRC="appicons/Assets.xcassets/AppIcon.appiconset"
 
 # ── Uninstall ──────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--uninstall" ]]; then
     echo "Removing blossom…"
     rm -f "$BIN_DIR/$BINARY"
     rm -f "$ICON_DIR/$APP_ID.svg"
+    for size in 16 32 48 64 128 256 512; do
+        rm -f "$DATA_DIR/icons/hicolor/${size}x${size}/apps/$APP_ID.png"
+    done
     rm -f "$DESKTOP_DIR/$APP_ID.desktop"
     gtk-update-icon-cache -f -t "$DATA_DIR/icons/hicolor" 2>/dev/null || true
     update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
@@ -58,6 +62,13 @@ mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_DIR"
 cp -f "target/release/$BINARY"                  "$BIN_DIR/$BINARY"
 cp -f "data/icons/$APP_ID.svg"                  "$ICON_DIR/$APP_ID.svg"
 cp -f "data/$APP_ID.desktop"                    "$DESKTOP_DIR/$APP_ID.desktop"
+
+# Install PNG icons at standard hicolor sizes
+for size in 16 32 48 64 128 256 512; do
+    dest="$DATA_DIR/icons/hicolor/${size}x${size}/apps"
+    mkdir -p "$dest"
+    cp -f "$ICON_SRC/${size}.png" "$dest/$APP_ID.png"
+done
 
 # Validate and update caches
 if command -v desktop-file-validate &>/dev/null; then

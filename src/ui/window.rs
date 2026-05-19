@@ -417,59 +417,80 @@ pub fn build_window(app: &adw::Application) {
         });
     }
 
-    // ── Wire: Font button (editor title bar) ───────────────────────────────
+    // ── Wire: Font button — uses native FontDialog (no popover conflict) ──
     {
-        let state  = Rc::clone(&state);
-        let ebody2 = editor.body.clone();
-        editor.font_btn.connect_clicked(move |btn| {
-            let (fam, sz, wt, lh) = {
+        let state = Rc::clone(&state);
+        let body2 = editor.body.clone();
+        let win2  = window.clone();
+        editor.font_btn.connect_clicked(move |_| {
+            let (fam, sz, wt) = {
                 let st = state.borrow();
                 st.vault.as_ref()
-                    .map(|v| (v.font_family.clone(), v.font_size, v.font_weight.clone(), v.line_height))
-                    .unwrap_or_else(|| ("Georgia, serif".into(), 16.0, "400".into(), 1.75))
+                    .map(|v| (v.font_family.clone(), v.font_size, v.font_weight.clone()))
+                    .unwrap_or_else(|| ("Georgia".into(), 16.0, "400".into()))
             };
-            // Collect installed font families from Pango
-            let families: Vec<String> = {
-                let ctx = btn.pango_context();
-                if let Some(fm) = ctx.font_map() {
-                    let mut v: Vec<String> = fm.list_families()
-                        .into_iter()
-                        .map(|f| f.name().to_string())
-                        .collect();
-                    v.sort_unstable();
-                    v.dedup();
-                    v
-                } else {
-                    vec!["Georgia".into(), "Sans".into(), "Serif".into(), "Monospace".into()]
-                }
-            };
+            let mut desc = gtk4::pango::FontDescription::new();
+            let base_fam = fam.split(',').next().unwrap_or(&fam).trim().to_owned();
+            desc.set_family(&base_fam);
+            desc.set_size((sz * gtk4::pango::SCALE as f64) as i32);
+            desc.set_weight(pango_weight_from_str(&wt));
 
-            let fp = dlg::FontPopover::new(&fam, sz, &wt, lh, &families);
-            fp.popover.set_parent(btn);
-            let fd   = fp.family_drop.clone();
-            let ss   = fp.size_spin.clone();
-            let wd   = fp.weight_drop.clone();
-            let lhs  = fp.line_height_spin.clone();
-            let st2  = Rc::clone(&state);
-            let body = ebody2.clone();
-            fp.popover.connect_closed(move |_| {
-                let fam = fd.selected_item()
-                    .and_then(|o| o.downcast::<gtk4::StringObject>().ok())
-                    .map(|s| s.string().to_string())
-                    .unwrap_or_else(|| "Georgia".to_string());
-                let sz  = ss.value();
-                let wt  = { let i = wd.selected() as usize; dlg::WEIGHT_IDS.get(i).copied().unwrap_or("400").to_owned() };
-                let lh  = lhs.value();
+            let dialog = gtk4::FontDialog::builder().build();
+            let st2    = Rc::clone(&state);
+            let body3  = body2.clone();
+            dialog.choose_font(Some(&win2), Some(&desc), None::<&gio::Cancellable>, move |result| {
+                let Ok(desc) = result else { return; };
+                let fam = desc.family().map(|s| s.to_string()).unwrap_or_else(|| "Georgia".to_string());
+                let sz  = desc.size() as f64 / gtk4::pango::SCALE as f64;
+                let wt  = pango_weight_to_str(desc.weight());
                 let mut st = st2.borrow_mut();
+                let lh = st.vault.as_ref().map(|v| v.line_height).unwrap_or(1.75);
                 if let Some(v) = st.vault.as_mut() {
-                    v.font_family = fam.clone(); v.font_size = sz;
-                    v.font_weight = wt.clone();  v.line_height = lh;
+                    v.font_family = fam.clone();
+                    v.font_size   = sz;
+                    v.font_weight = wt.clone();
                     let _ = v.save();
                 }
                 drop(st);
-                apply_font(&body, &fam, sz, &wt, lh);
+                apply_font(&body3, &fam, sz, &wt, lh);
             });
-            fp.popover.popup();
+        });
+    }
+
+    // ── Wire: Line height button ───────────────────────────────────────────
+    {
+        let state = Rc::clone(&state);
+        let body2 = editor.body.clone();
+        editor.lh_btn.connect_clicked(move |btn| {
+            let lh = state.borrow().vault.as_ref().map(|v| v.line_height).unwrap_or(1.75);
+            let popover = gtk4::Popover::new();
+            popover.set_parent(btn);
+            let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+            vbox.set_margin_start(12); vbox.set_margin_end(12);
+            vbox.set_margin_top(10);   vbox.set_margin_bottom(10);
+            vbox.append(&gtk4::Label::builder()
+                .label("Line height").css_classes(["dim-label"]).halign(gtk4::Align::Start).build());
+            let adj  = gtk4::Adjustment::new(lh, 1.0, 3.0, 0.05, 0.1, 0.0);
+            let spin = gtk4::SpinButton::new(Some(&adj), 0.05, 2);
+            vbox.append(&spin);
+            popover.set_child(Some(&vbox));
+
+            let st2   = Rc::clone(&state);
+            let body3 = body2.clone();
+            popover.connect_closed(move |_| {
+                let lh = spin.value();
+                let mut st = st2.borrow_mut();
+                let (fam, sz, wt) = st.vault.as_ref()
+                    .map(|v| (v.font_family.clone(), v.font_size, v.font_weight.clone()))
+                    .unwrap_or_else(|| ("Georgia".into(), 16.0, "400".into()));
+                if let Some(v) = st.vault.as_mut() {
+                    v.line_height = lh;
+                    let _ = v.save();
+                }
+                drop(st);
+                apply_font(&body3, &fam, sz, &wt, lh);
+            });
+            popover.popup();
         });
     }
 
@@ -631,6 +652,85 @@ pub fn build_window(app: &adw::Application) {
         conn!(bottom_bar.brown_scale); conn!(bottom_bar.master_scale);
     }
 
+    // ── Calendar: mark days with entries ──────────────────────────────────
+    let refresh_calendar: Rc<dyn Fn()> = {
+        let state    = Rc::clone(&state);
+        let calendar = sidebar.calendar.clone();
+        let cal_list = sidebar.cal_list.clone();
+        Rc::new(move || {
+            let month: u32 = (calendar.property::<i32>("month") + 1) as u32;
+            let year:  i32 = calendar.property("year");
+            let day:   u32 = calendar.property::<i32>("day") as u32;
+            calendar.clear_marks();
+            while let Some(c) = cal_list.first_child() { cal_list.remove(&c); }
+            let st = state.borrow();
+            if let Some(vault) = &st.vault {
+                for entry in vault.search("") {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&entry.created) {
+                        if dt.year() == year && dt.month() == month {
+                            calendar.mark_day(dt.day());
+                            if dt.day() == day {
+                                cal_list.append(&make_entry_row(entry));
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    };
+
+    // ── Wire: Calendar toggle button ───────────────────────────────────────
+    {
+        let vs  = sidebar.view_stack.clone();
+        let rc2 = Rc::clone(&refresh_calendar);
+        sidebar.cal_btn.connect_clicked(move |_| {
+            if vs.visible_child_name().as_deref() == Some("list") {
+                vs.set_visible_child_name("calendar");
+                rc2();
+            } else {
+                vs.set_visible_child_name("list");
+            }
+        });
+    }
+
+    // ── Wire: Calendar day selected → repopulate list below calendar ──────
+    {
+        let rc2 = Rc::clone(&refresh_calendar);
+        sidebar.calendar.connect_day_selected(move |_| { rc2(); });
+    }
+
+    // ── Wire: Calendar month/year navigation → refresh marks ──────────────
+    {
+        let rc2 = Rc::clone(&refresh_calendar);
+        sidebar.calendar.connect_next_month(move |_| { rc2(); });
+    }
+    {
+        let rc2 = Rc::clone(&refresh_calendar);
+        sidebar.calendar.connect_prev_month(move |_| { rc2(); });
+    }
+    {
+        let rc2 = Rc::clone(&refresh_calendar);
+        sidebar.calendar.connect_next_year(move |_| { rc2(); });
+    }
+    {
+        let rc2 = Rc::clone(&refresh_calendar);
+        sidebar.calendar.connect_prev_year(move |_| { rc2(); });
+    }
+
+    // ── Wire: Calendar day-entry list row selected ─────────────────────────
+    {
+        let state = Rc::clone(&state);
+        let le    = Rc::clone(&load_entry);
+        let save  = Rc::clone(&do_save);
+        sidebar.cal_list.connect_row_selected(move |_, row| {
+            let Some(row) = row else { return; };
+            let id = row.widget_name().to_string();
+            save();
+            state.borrow_mut().current_entry_id = Some(id.clone());
+            le(&id);
+        });
+    }
+
     refresh_home();
     main_stack.set_visible_child_name("home");
     window.present();
@@ -783,10 +883,14 @@ fn build_journal_card(
 // ──────────────────────────────────────────────────────────────────────────────
 
 struct SidebarWidgets {
-    outer:   gtk4::Box,
-    list:    gtk4::ListBox,
-    search:  gtk4::SearchEntry,
-    new_btn: gtk4::Button,
+    outer:      gtk4::Box,
+    list:       gtk4::ListBox,
+    search:     gtk4::SearchEntry,
+    new_btn:    gtk4::Button,
+    cal_btn:    gtk4::Button,
+    view_stack: gtk4::Stack,
+    calendar:   gtk4::Calendar,
+    cal_list:   gtk4::ListBox,
 }
 
 fn build_sidebar() -> SidebarWidgets {
@@ -799,27 +903,52 @@ fn build_sidebar() -> SidebarWidgets {
     header.append(&gtk4::Label::builder()
         .label("ENTRIES").css_classes(["vault-label"])
         .hexpand(true).halign(gtk4::Align::Start).build());
+    let cal_btn = gtk4::Button::builder()
+        .icon_name("calendar-symbolic")
+        .tooltip_text("Calendar view")
+        .css_classes(["flat"]).build();
     let new_btn = gtk4::Button::builder()
         .icon_name("list-add-symbolic").tooltip_text("New entry")
         .css_classes(["flat", "new-entry-icon"]).build();
+    header.append(&cal_btn);
     header.append(&new_btn);
 
+    // List view
     let search = gtk4::SearchEntry::builder()
         .placeholder_text("Search…").css_classes(["sidebar-search"]).build();
-
     let list = gtk4::ListBox::new();
     list.set_selection_mode(gtk4::SelectionMode::Single);
     list.add_css_class("entry-list");
-
-    let scroll = gtk4::ScrolledWindow::builder()
+    let list_scroll = gtk4::ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Never)
         .vscrollbar_policy(gtk4::PolicyType::Automatic)
         .vexpand(true).child(&list).build();
+    let list_view = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    list_view.append(&search);
+    list_view.append(&list_scroll);
+
+    // Calendar view
+    let calendar = gtk4::Calendar::new();
+    let cal_list = gtk4::ListBox::new();
+    cal_list.set_selection_mode(gtk4::SelectionMode::Single);
+    cal_list.add_css_class("entry-list");
+    let cal_scroll = gtk4::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk4::PolicyType::Never)
+        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+        .vexpand(true).child(&cal_list).build();
+    let cal_view = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    cal_view.append(&calendar);
+    cal_view.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
+    cal_view.append(&cal_scroll);
+
+    let view_stack = gtk4::Stack::new();
+    view_stack.set_vexpand(true);
+    view_stack.add_named(&list_view, Some("list"));
+    view_stack.add_named(&cal_view, Some("calendar"));
 
     outer.append(&header);
-    outer.append(&search);
-    outer.append(&scroll);
-    SidebarWidgets { outer, list, search, new_btn }
+    outer.append(&view_stack);
+    SidebarWidgets { outer, list, search, new_btn, cal_btn, view_stack, calendar, cal_list }
 }
 
 struct EditorWidgets {
@@ -832,6 +961,7 @@ struct EditorWidgets {
     delete_btn: gtk4::Button,
     date_btn:   gtk4::Button,
     font_btn:   gtk4::Button,
+    lh_btn:     gtk4::Button,
 }
 
 fn build_editor() -> EditorWidgets {
@@ -866,6 +996,10 @@ fn build_editor() -> EditorWidgets {
         .icon_name("preferences-desktop-font-symbolic")
         .tooltip_text("Journal font settings")
         .css_classes(["flat"]).build();
+    let lh_btn = gtk4::Button::builder()
+        .label("↕")
+        .tooltip_text("Line height")
+        .css_classes(["flat"]).build();
     let attach_btn = gtk4::Button::builder()
         .icon_name("mail-attachment-symbolic").tooltip_text("Attach image or video")
         .css_classes(["flat"]).build();
@@ -876,6 +1010,7 @@ fn build_editor() -> EditorWidgets {
     title_bar.append(&title_entry);
     title_bar.append(&date_btn);
     title_bar.append(&font_btn);
+    title_bar.append(&lh_btn);
     title_bar.append(&attach_btn);
     title_bar.append(&delete_btn);
 
@@ -907,7 +1042,7 @@ fn build_editor() -> EditorWidgets {
     outer.append(&stack);
 
     EditorWidgets { outer, stack, title: title_entry, body: body_view,
-                    media_box, attach_btn, delete_btn, date_btn, font_btn }
+                    media_box, attach_btn, delete_btn, date_btn, font_btn, lh_btn }
 }
 
 struct BottomBarWidgets {
@@ -1112,4 +1247,33 @@ fn guess_mime(path: &std::path::Path) -> String {
         Some("mov")  => "video/quicktime".into(),
         _ => "application/octet-stream".into(),
     }
+}
+
+fn pango_weight_from_str(w: &str) -> gtk4::pango::Weight {
+    match w {
+        "100" => gtk4::pango::Weight::Thin,
+        "200" => gtk4::pango::Weight::Ultralight,
+        "300" => gtk4::pango::Weight::Light,
+        "500" => gtk4::pango::Weight::Medium,
+        "600" => gtk4::pango::Weight::Semibold,
+        "700" => gtk4::pango::Weight::Bold,
+        "800" => gtk4::pango::Weight::Ultrabold,
+        "900" => gtk4::pango::Weight::Heavy,
+        _     => gtk4::pango::Weight::Normal,
+    }
+}
+
+fn pango_weight_to_str(w: gtk4::pango::Weight) -> String {
+    match w {
+        gtk4::pango::Weight::Thin       => "100",
+        gtk4::pango::Weight::Ultralight => "200",
+        gtk4::pango::Weight::Light      => "300",
+        gtk4::pango::Weight::Normal     => "400",
+        gtk4::pango::Weight::Medium     => "500",
+        gtk4::pango::Weight::Semibold   => "600",
+        gtk4::pango::Weight::Bold       => "700",
+        gtk4::pango::Weight::Ultrabold  => "800",
+        gtk4::pango::Weight::Heavy      => "900",
+        _                               => "400",
+    }.to_owned()
 }
