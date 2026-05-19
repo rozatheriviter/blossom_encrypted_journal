@@ -227,43 +227,46 @@ textview.editor-body > text {
 
 .bottom-bar {
   background-color: BLOSSOM_SURF;
+  min-height: 100px;
+  padding: 6px 0;
 }
 
 /* ── Noise panel ────────────────────────────────────────────────────────── */
 
-.noise-section-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: BLOSSOM_FG3;
-}
-.noise-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: BLOSSOM_FG2;
-  min-width: 20px;
-}
-
 scale.noise-slider trough {
   background-color: rgba(BLOSSOM_ARGB, 0.12);
-  border-radius: 3px;
-  min-height: 3px;
+  border-radius: 4px;
+  min-width: 4px;
 }
 scale.noise-slider trough highlight {
-  background-color: BLOSSOM_ACCENT;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 scale.noise-slider slider {
-  background-color: BLOSSOM_ACCENT;
-  min-width: 13px;
-  min-height: 13px;
+  min-width: 14px;
+  min-height: 14px;
   border-radius: 50%;
-  box-shadow: 0 1px 4px rgba(BLOSSOM_ARGB, 0.40);
   border: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
 }
 scale.noise-slider slider:hover {
-  box-shadow: 0 0 0 4px rgba(BLOSSOM_ARGB, 0.16), 0 1px 4px rgba(BLOSSOM_ARGB, 0.40);
+  box-shadow: 0 0 0 4px rgba(BLOSSOM_ARGB, 0.16), 0 1px 4px rgba(0,0,0,0.25);
+}
+
+scale.noise-slider-brown trough highlight,
+scale.noise-slider-brown slider {
+  background-color: #8d6e63;
+}
+scale.noise-slider-pink trough highlight,
+scale.noise-slider-pink slider {
+  background-color: #f06292;
+}
+scale.noise-slider-white trough highlight,
+scale.noise-slider-white slider {
+  background-color: #e0e0e0;
+}
+scale.noise-slider-master trough highlight,
+scale.noise-slider-master slider {
+  background-color: BLOSSOM_ACCENT;
 }
 
 /* ── MPRIS bar ──────────────────────────────────────────────────────────── */
@@ -285,6 +288,26 @@ scale.noise-slider slider:hover {
 }
 .mpris-button:active {
   background-color: rgba(BLOSSOM_ARGB, 0.18);
+}
+
+/* ── System Media Volume Slider ────────────────────────────────────────── */
+
+scale.mpris-vol-slider trough {
+  background-color: rgba(BLOSSOM_ARGB, 0.12);
+  border-radius: 3px;
+  min-height: 3px;
+}
+scale.mpris-vol-slider trough highlight {
+  background-color: BLOSSOM_ACCENT;
+  border-radius: 3px;
+}
+scale.mpris-vol-slider slider {
+  background-color: BLOSSOM_ACCENT;
+  min-width: 12px;
+  min-height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  border: none;
 }
 
 /* ── Home screen ────────────────────────────────────────────────────────── */

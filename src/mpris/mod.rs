@@ -8,6 +8,7 @@ pub struct NowPlaying {
     pub artist: String,
     pub _album: String,
     pub status: PlaybackStatus,
+    pub volume: f64,
     pub _can_play: bool,
     pub _can_next: bool,
     pub _can_prev: bool,
@@ -103,6 +104,7 @@ async fn poll() -> zbus::Result<Option<NowPlaying>> {
         proxy.get_property("Metadata").await?;
 
     let status_str: String = proxy.get_property("PlaybackStatus").await.unwrap_or_default();
+    let volume: f64 = proxy.get_property("Volume").await.unwrap_or(0.0);
     let can_play: bool = proxy.get_property("CanPlay").await.unwrap_or(false);
     let can_next: bool = proxy.get_property("CanGoNext").await.unwrap_or(false);
     let can_prev: bool = proxy.get_property("CanGoPrevious").await.unwrap_or(false);
@@ -122,7 +124,7 @@ async fn poll() -> zbus::Result<Option<NowPlaying>> {
         .unwrap_or(bus_name.as_str())
         .to_owned();
 
-    Ok(Some(NowPlaying { _player: player, title, artist, _album: album, status, _can_play: can_play, _can_next: can_next, _can_prev: can_prev }))
+    Ok(Some(NowPlaying { _player: player, title, artist, _album: album, status, volume, _can_play: can_play, _can_next: can_next, _can_prev: can_prev }))
 }
 
 fn str_meta(
@@ -164,6 +166,38 @@ pub fn send_command(method: &'static str) {
             let _ = do_send(method).await;
         });
     });
+}
+
+pub fn set_volume(volume: f64) {
+    std::thread::spawn(move || {
+        async_io::block_on(async move {
+            let _ = do_set_volume(volume).await;
+        });
+    });
+}
+
+async fn do_set_volume(volume: f64) -> zbus::Result<()> {
+    let conn = zbus::Connection::session().await?;
+    let dbus = zbus::fdo::DBusProxy::new(&conn).await?;
+    let names = dbus.list_names().await?;
+
+    let bus_name: Option<String> = names
+        .iter()
+        .map(|n| n.to_string())
+        .find(|n| n.starts_with("org.mpris.MediaPlayer2."));
+
+    let Some(bus_name) = bus_name else { return Ok(()); };
+
+    let proxy = zbus::Proxy::new(
+        &conn,
+        bus_name.as_str(),
+        "/org/mpris/MediaPlayer2",
+        "org.mpris.MediaPlayer2.Player",
+    )
+    .await?;
+
+    proxy.set_property("Volume", volume).await?;
+    Ok(())
 }
 
 async fn do_send(method: &str) -> zbus::Result<()> {
