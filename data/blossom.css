@@ -427,6 +427,21 @@ paned > separator {
 
 label.dim-label { font-size: 11px; color: BLOSSOM_FG2; }
 
+/* ── Word count ─────────────────────────────────────────────────────────── */
+
+.word-count-label {
+  font-size: 10px;
+  color: BLOSSOM_FG3;
+  letter-spacing: 0.04em;
+}
+
+/* ── Distraction-free toggle ────────────────────────────────────────────── */
+
+togglebutton.flat:checked {
+  background-color: rgba(BLOSSOM_ARGB, 0.12);
+  color: BLOSSOM_ACCENT;
+}
+
 /* ── Popovers ───────────────────────────────────────────────────────────── */
 
 popover > contents {

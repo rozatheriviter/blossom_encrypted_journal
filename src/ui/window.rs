@@ -91,6 +91,13 @@ pub fn build_window(app: &adw::Application) {
         .build();
     header.pack_start(&home_btn);
 
+    let zen_btn = gtk4::ToggleButton::builder()
+        .icon_name("eye-not-looking-symbolic")
+        .tooltip_text("Distraction-free mode (Ctrl+D)")
+        .css_classes(["flat"])
+        .build();
+    header.pack_end(&zen_btn);
+
     // ── Stacks ─────────────────────────────────────────────────────────────
     let main_stack = gtk4::Stack::new();
     main_stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
@@ -349,9 +356,11 @@ pub fn build_window(app: &adw::Application) {
         let vc2  = vault_chip.clone();
         let hb2  = home_btn.clone();
         let rh2  = Rc::clone(&refresh_home);
+        let zb2  = zen_btn.clone();
         home_btn.connect_clicked(move |_| {
             vc2.set_visible(false);
             hb2.set_visible(false);
+            zb2.set_active(false);
             rh2();
             ms2.set_visible_child_name("home");
         });
@@ -558,7 +567,9 @@ pub fn build_window(app: &adw::Application) {
             f.add_mime_type("image/*");
             f.add_mime_type("video/*");
             filters.append(&f);
+            let home_dir = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
             let fd = gtk4::FileDialog::builder().title("Attach Media").filters(&filters).build();
+            fd.set_initial_folder(Some(&gio::File::for_path(&home_dir)));
             let state2  = Rc::clone(&state);
             let mbox3   = mbox2.clone();
             let mstrip2 = mstrip.clone();
@@ -787,6 +798,92 @@ pub fn build_window(app: &adw::Application) {
         });
     }
 
+    // ── Wire: Word count ───────────────────────────────────────────────────
+    {
+        let wc = editor.word_count_label.clone();
+        editor.body.buffer().connect_changed(move |buf| {
+            let text  = buf.text(&buf.start_iter(), &buf.end_iter(), false);
+            let words = text.split_whitespace().count();
+            let chars = text.chars().count();
+            wc.set_label(&format!("{words} words · {chars} chars"));
+        });
+    }
+
+    // ── Wire: Export entry ─────────────────────────────────────────────────
+    {
+        let etitle = editor.title.clone();
+        let ebody  = editor.body.clone();
+        let win2   = window.clone();
+        editor.export_btn.connect_clicked(move |_| {
+            let title = etitle.text().to_string();
+            let buf   = ebody.buffer();
+            let body  = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+            let stem  = if title.is_empty() { "untitled".to_string() } else { title.clone() };
+            let fd    = gtk4::FileDialog::builder()
+                .title("Export Entry")
+                .initial_name(&format!("{stem}.md"))
+                .build();
+            let home_dir = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+            fd.set_initial_folder(Some(&gio::File::for_path(&home_dir)));
+            fd.save(Some(&win2), None::<&gio::Cancellable>, move |result| {
+                let Ok(file)   = result else { return; };
+                let Some(path) = file.path() else { return; };
+                let content = if title.is_empty() {
+                    body.clone()
+                } else {
+                    format!("# {title}\n\n{body}")
+                };
+                let _ = std::fs::write(&path, content);
+            });
+        });
+    }
+
+    // ── Wire: Distraction-free mode ────────────────────────────────────────
+    {
+        let sv3  = split_view.clone();
+        let bbo  = bottom_bar.outer.clone();
+        let st3  = sidebar_toggle.clone();
+        zen_btn.connect_toggled(move |btn| {
+            let zen = btn.is_active();
+            bbo.set_visible(!zen);
+            if zen {
+                sv3.set_show_sidebar(false);
+                st3.set_active(false);
+            }
+        });
+    }
+
+    // ── Wire: Keyboard shortcuts ───────────────────────────────────────────
+    {
+        let new_btn2 = sidebar.new_btn.clone();
+        let search2  = sidebar.search.clone();
+        let font2    = editor.font_btn.clone();
+        let zen2     = zen_btn.clone();
+        let ms3      = main_stack.clone();
+        let key_ctrl = gtk4::EventControllerKey::new();
+        key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+        key_ctrl.connect_key_pressed(move |_, key, _, modifiers| {
+            use gdk4::Key;
+            let ctrl      = modifiers.contains(gdk4::ModifierType::CONTROL_MASK);
+            let in_editor = ms3.visible_child_name().as_deref() == Some("editor");
+            match (ctrl, key) {
+                (true, Key::n) if in_editor     => { new_btn2.emit_clicked(); glib::Propagation::Stop }
+                (true, Key::f) if in_editor     => { search2.grab_focus();    glib::Propagation::Stop }
+                (true, Key::comma) if in_editor => { font2.emit_clicked();     glib::Propagation::Stop }
+                (true, Key::d) => {
+                    zen2.set_active(!zen2.is_active());
+                    glib::Propagation::Stop
+                }
+                (false, Key::Escape) if zen2.is_active() => {
+                    zen2.set_active(false);
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
+        });
+        window.add_controller(key_ctrl);
+    }
+
     refresh_home();
     main_stack.set_visible_child_name("home");
     window.present();
@@ -1011,17 +1108,19 @@ fn build_sidebar() -> SidebarWidgets {
 }
 
 struct EditorWidgets {
-    outer:       gtk4::Box,
-    stack:       gtk4::Stack,
-    title:       gtk4::Entry,
-    body:        gtk4::TextView,
-    media_box:   gtk4::Box,
-    media_strip: gtk4::Box,
-    attach_btn:  gtk4::Button,
-    delete_btn:  gtk4::Button,
-    date_btn:    gtk4::Button,
-    font_btn:    gtk4::Button,
-    lh_btn:      gtk4::Button,
+    outer:            gtk4::Box,
+    stack:            gtk4::Stack,
+    title:            gtk4::Entry,
+    body:             gtk4::TextView,
+    media_box:        gtk4::Box,
+    media_strip:      gtk4::Box,
+    attach_btn:       gtk4::Button,
+    export_btn:       gtk4::Button,
+    delete_btn:       gtk4::Button,
+    date_btn:         gtk4::Button,
+    font_btn:         gtk4::Button,
+    lh_btn:           gtk4::Button,
+    word_count_label: gtk4::Label,
 }
 
 fn build_editor() -> EditorWidgets {
@@ -1063,6 +1162,9 @@ fn build_editor() -> EditorWidgets {
     let attach_btn = gtk4::Button::builder()
         .icon_name("mail-attachment-symbolic").tooltip_text("Attach image or video")
         .css_classes(["flat"]).build();
+    let export_btn = gtk4::Button::builder()
+        .icon_name("document-send-symbolic").tooltip_text("Export entry as .md")
+        .css_classes(["flat"]).build();
     let delete_btn = gtk4::Button::builder()
         .icon_name("user-trash-symbolic").tooltip_text("Delete entry")
         .css_classes(["flat", "destructive-action"]).build();
@@ -1072,6 +1174,7 @@ fn build_editor() -> EditorWidgets {
     title_bar.append(&font_btn);
     title_bar.append(&lh_btn);
     title_bar.append(&attach_btn);
+    title_bar.append(&export_btn);
     title_bar.append(&delete_btn);
 
     let body_view = gtk4::TextView::builder()
@@ -1096,17 +1199,31 @@ fn build_editor() -> EditorWidgets {
     media_strip.append(&media_scroll);
     media_strip.set_visible(false);
 
+    let word_count_label = gtk4::Label::builder()
+        .label("")
+        .css_classes(["word-count-label"])
+        .hexpand(true)
+        .halign(gtk4::Align::End)
+        .margin_end(16)
+        .margin_top(4)
+        .margin_bottom(4)
+        .build();
+    let status_bar = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    status_bar.append(&word_count_label);
+
     evbox.append(&title_bar);
     evbox.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
     evbox.append(&body_scroll);
     evbox.append(&media_strip);
+    evbox.append(&status_bar);
 
     stack.add_named(&evbox, Some("editor"));
     stack.set_visible_child_name("empty");
     outer.append(&stack);
 
     EditorWidgets { outer, stack, title: title_entry, body: body_view,
-                    media_box, media_strip, attach_btn, delete_btn, date_btn, font_btn, lh_btn }
+                    media_box, media_strip, attach_btn, export_btn, delete_btn,
+                    date_btn, font_btn, lh_btn, word_count_label }
 }
 
 struct BottomBarWidgets {
