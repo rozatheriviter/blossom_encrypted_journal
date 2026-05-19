@@ -270,6 +270,7 @@ pub fn build_window(app: &adw::Application) {
         let window       = window.clone();
         let refresh_list = Rc::clone(&refresh_list);
         let rh_holder    = Rc::clone(&rh_holder);
+        let split_view   = split_view.clone();
 
         Rc::new(move || {
             while let Some(c) = home_page.first_child() { home_page.remove(&c); }
@@ -304,6 +305,7 @@ pub fn build_window(app: &adw::Application) {
                         vault_chip.clone(),
                         home_btn.clone(),
                         window.clone(),
+                        split_view.clone(),
                     );
                     centre.append(&card);
                 }
@@ -321,10 +323,12 @@ pub fn build_window(app: &adw::Application) {
                 let rl     = Rc::clone(&refresh_list);
                 let win    = window.clone();
                 let win2   = window.clone();
+                let sv     = split_view.clone();
                 new_btn.connect_clicked(move |_| {
                     wire_create_journal(
                         &win, Rc::clone(&state2), ms.clone(), es.clone(),
                         vc.clone(), hb.clone(), Rc::clone(&rl), win2.clone(),
+                        sv.clone(),
                     );
                 });
             }
@@ -801,6 +805,7 @@ fn wire_create_journal(
     home_btn: gtk4::Button,
     refresh_list: Rc<dyn Fn()>,
     err_parent: adw::ApplicationWindow,
+    split_view: adw::OverlaySplitView,
 ) {
     dlg::show_create(parent, move |name, pass| {
         let path = vault::new_vault_path();
@@ -813,6 +818,7 @@ fn wire_create_journal(
                 state.borrow_mut().current_entry_id = None;
                 editor_stack.set_visible_child_name("empty");
                 main_stack.set_visible_child_name("editor");
+                split_view.set_show_sidebar(true);
                 refresh_list();
             }
             Err(e) => dlg::show_error(&err_parent, &e.to_string()),
@@ -836,6 +842,7 @@ fn build_journal_card(
     vault_chip: gtk4::Label,
     home_btn: gtk4::Button,
     window: adw::ApplicationWindow,
+    split_view: adw::OverlaySplitView,
 ) -> gtk4::Widget {
     let card = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     card.add_css_class("journal-card");
@@ -870,6 +877,7 @@ fn build_journal_card(
         let hb     = home_btn.clone();
         let win    = window.clone();
         let win2   = window.clone();
+        let sv     = split_view.clone();
         open_btn.connect_clicked(move |_| {
             let name3  = name2.clone();
             let path3  = path2.clone();
@@ -880,6 +888,7 @@ fn build_journal_card(
             let vc2    = vc.clone();
             let hb2    = hb.clone();
             let win3   = win2.clone();
+            let sv2    = sv.clone();
             dlg::show_unlock(&win, &name3, move |pass| {
                 match Vault::open(&path3, &pass) {
                     Ok(v) => {
@@ -890,6 +899,7 @@ fn build_journal_card(
                         state3.borrow_mut().current_entry_id = None;
                         es2.set_visible_child_name("empty");
                         ms2.set_visible_child_name("editor");
+                        sv2.set_show_sidebar(true);
                         rl2();
                     }
                     Err(e) => dlg::show_error(&win3, &e.to_string()),
