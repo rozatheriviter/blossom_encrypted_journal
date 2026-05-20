@@ -49,10 +49,13 @@ const DARK: ThemeTokens = ThemeTokens {
 pub struct AppSettings {
     #[serde(default)]
     pub dark_mode: bool,
+    /// Minutes of inactivity before the vault is locked. 0 = disabled.
+    #[serde(default)]
+    pub auto_lock_minutes: u32,
 }
 
 impl Default for AppSettings {
-    fn default() -> Self { AppSettings { dark_mode: false } }
+    fn default() -> Self { AppSettings { dark_mode: false, auto_lock_minutes: 0 } }
 }
 
 impl AppSettings {

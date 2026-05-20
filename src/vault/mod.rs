@@ -117,6 +117,7 @@ impl Vault {
             created: now.clone(),
             updated: now,
             media: Vec::new(),
+            pinned: false,
         }
     }
 
@@ -145,18 +146,32 @@ impl Vault {
         self.entries.iter_mut().find(|e| e.id == id)
     }
 
+    /// Re-encrypts the vault with a new passphrase and saves.
+    pub fn change_passphrase(&mut self, new_passphrase: &str) -> Result<()> {
+        let new_salt = gen_salt();
+        let new_key  = derive_key(new_passphrase, &new_salt)?;
+        self.salt = new_salt;
+        self.key  = new_key;
+        self.save()
+    }
+
     /// Returns entries matching the query (case-insensitive title + body search).
+    /// Pinned entries always appear first.
     pub fn search<'a>(&'a self, query: &str) -> Vec<&'a Entry> {
-        if query.is_empty() {
-            return self.entries.iter().collect();
-        }
-        let q = query.to_lowercase();
-        self.entries
-            .iter()
-            .filter(|e| {
-                e.title.to_lowercase().contains(&q) || e.body.to_lowercase().contains(&q)
-            })
-            .collect()
+        let mut results: Vec<&Entry> = if query.is_empty() {
+            self.entries.iter().collect()
+        } else {
+            let q = query.to_lowercase();
+            self.entries
+                .iter()
+                .filter(|e| {
+                    e.title.to_lowercase().contains(&q) || e.body.to_lowercase().contains(&q)
+                })
+                .collect()
+        };
+        // stable sort: pinned entries bubble to front, order within each group is preserved
+        results.sort_by(|a, b| b.pinned.cmp(&a.pinned));
+        results
     }
 }
 

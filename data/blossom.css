@@ -225,10 +225,15 @@ textview.editor-body > text {
 
 /* ── Bottom bar ─────────────────────────────────────────────────────────── */
 
+/* Ensure ToolbarView content area matches app background */
+toolbarview {
+  background-color: BLOSSOM_BG;
+}
+
 .bottom-bar {
   background-color: BLOSSOM_SURF;
   min-height: 100px;
-  padding: 6px 0;
+  padding: 0 0 6px 0;
 }
 
 /* ── Noise panel ────────────────────────────────────────────────────────── */
@@ -312,7 +317,9 @@ scale.mpris-vol-slider slider {
 
 /* ── Home screen ────────────────────────────────────────────────────────── */
 
-.home-page {
+.home-page,
+.home-page scrolledwindow,
+.home-page scrolledwindow > viewport {
   background-color: BLOSSOM_BG;
 }
 
@@ -456,6 +463,18 @@ label.dim-label { font-size: 11px; color: BLOSSOM_FG2; }
   font-size: 10px;
   color: BLOSSOM_FG3;
   letter-spacing: 0.04em;
+}
+
+/* ── Pin indicator ──────────────────────────────────────────────────────── */
+
+.pin-icon { color: BLOSSOM_ACCENT; }
+
+/* ── Distraction-free / focus mode ─────────────────────────────────────── */
+
+button.dfree-active {
+  color: BLOSSOM_ACCENT;
+  background-color: rgba(BLOSSOM_ARGB, 0.12);
+  border-radius: 8px;
 }
 
 

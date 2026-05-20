@@ -9,6 +9,8 @@ pub struct Entry {
     pub updated: String,  // RFC3339; auto-updated on save
     #[serde(default)]
     pub media: Vec<MediaItem>,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

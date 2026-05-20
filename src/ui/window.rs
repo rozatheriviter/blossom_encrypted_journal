@@ -1,7 +1,7 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use chrono::{Datelike, Timelike};
@@ -39,6 +39,8 @@ impl AppState {
 pub fn build_window(app: &adw::Application) {
     let state: Rc<RefCell<AppState>> = Rc::new(RefCell::new(AppState::new()));
     let save_timer: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+    let dfree_active: Rc<Cell<bool>> = Rc::new(Cell::new(false));
+    let last_activity: Rc<Cell<Instant>> = Rc::new(Cell::new(Instant::now()));
 
     apply_color_scheme(state.borrow().settings.dark_mode);
     let css_provider = gtk4::CssProvider::new();
@@ -90,6 +92,22 @@ pub fn build_window(app: &adw::Application) {
         .visible(false)
         .build();
     header.pack_start(&home_btn);
+
+    let dfree_btn = gtk4::ToggleButton::builder()
+        .icon_name("view-fullscreen-symbolic")
+        .tooltip_text("Distraction-free mode (F11)")
+        .css_classes(["flat"])
+        .visible(false)
+        .build();
+    header.pack_end(&dfree_btn);
+
+    let export_journal_btn = gtk4::Button::builder()
+        .icon_name("document-save-symbolic")
+        .tooltip_text("Export journal as Markdown")
+        .css_classes(["flat"])
+        .visible(false)
+        .build();
+    header.pack_end(&export_journal_btn);
 
 
     // ── Stacks ─────────────────────────────────────────────────────────────
@@ -201,6 +219,8 @@ pub fn build_window(app: &adw::Application) {
         let mbox     = editor.media_box.clone();
         let mstrip   = editor.media_strip.clone();
         let date_btn = editor.date_btn.clone();
+        let pin_btn  = editor.pin_btn.clone();
+        let win      = window.clone();
         Rc::new(move |id: &str| {
             let data = {
                 let st = state.borrow();
@@ -208,9 +228,9 @@ pub fn build_window(app: &adw::Application) {
                 let Some(e) = v.get_entry(id) else { return; };
                 Some((e.title.clone(), e.body.clone(), e.created.clone(),
                       e.media.clone(), v.font_family.clone(), v.font_size,
-                      v.font_weight.clone(), v.line_height))
+                      v.font_weight.clone(), v.line_height, e.pinned))
             };
-            let Some((title, body, created, media, fam, sz, wt, lh)) = data else { return; };
+            let Some((title, body, created, media, fam, sz, wt, lh, pinned)) = data else { return; };
             estack.set_visible_child_name("editor");
             state.borrow_mut().suppress_change = true;
             etitle.set_text(&title);
@@ -219,10 +239,11 @@ pub fn build_window(app: &adw::Application) {
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&created) {
                 date_btn.set_label(&dt.format("%-d %b %Y, %H:%M").to_string());
             }
+            pin_btn.set_active(pinned);
             state.borrow_mut().suppress_change = false;
             while let Some(c) = mbox.first_child() { mbox.remove(&c); }
             for item in &media {
-                if let Some(t) = make_deletable_thumb(item, Rc::clone(&state), id.to_string(), item.id.clone(), mstrip.clone()) {
+                if let Some(t) = make_deletable_thumb(item, Rc::clone(&state), id.to_string(), item.id.clone(), mstrip.clone(), win.clone()) {
                     mbox.append(&t);
                 }
             }
@@ -263,16 +284,18 @@ pub fn build_window(app: &adw::Application) {
     let rh_holder: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
 
     let refresh_home: Rc<dyn Fn()> = {
-        let state        = Rc::clone(&state);
-        let home_page    = home_page.clone();
-        let main_stack   = main_stack.clone();
-        let editor_stack = editor.stack.clone();
-        let vault_chip   = vault_chip.clone();
-        let home_btn     = home_btn.clone();
-        let window       = window.clone();
-        let refresh_list = Rc::clone(&refresh_list);
-        let rh_holder    = Rc::clone(&rh_holder);
-        let split_view   = split_view.clone();
+        let state              = Rc::clone(&state);
+        let home_page          = home_page.clone();
+        let main_stack         = main_stack.clone();
+        let editor_stack       = editor.stack.clone();
+        let vault_chip         = vault_chip.clone();
+        let home_btn           = home_btn.clone();
+        let dfree_btn          = dfree_btn.clone();
+        let export_journal_btn = export_journal_btn.clone();
+        let window             = window.clone();
+        let refresh_list       = Rc::clone(&refresh_list);
+        let rh_holder          = Rc::clone(&rh_holder);
+        let split_view         = split_view.clone();
 
         Rc::new(move || {
             while let Some(c) = home_page.first_child() { home_page.remove(&c); }
@@ -306,6 +329,8 @@ pub fn build_window(app: &adw::Application) {
                         editor_stack.clone(),
                         vault_chip.clone(),
                         home_btn.clone(),
+                        dfree_btn.clone(),
+                        export_journal_btn.clone(),
                         window.clone(),
                         split_view.clone(),
                     );
@@ -313,28 +338,72 @@ pub fn build_window(app: &adw::Application) {
                 }
             }
 
+            let btn_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+            btn_row.set_halign(gtk4::Align::Center);
+            btn_row.set_margin_top(28);
+
             let new_btn = gtk4::Button::builder()
-                .label("+ New Journal").css_classes(["new-journal-button"])
-                .margin_top(28).halign(gtk4::Align::Center).build();
+                .label("+ New Journal").css_classes(["new-journal-button"]).build();
             {
-                let state2 = Rc::clone(&state);
-                let ms     = main_stack.clone();
-                let es     = editor_stack.clone();
-                let vc     = vault_chip.clone();
-                let hb     = home_btn.clone();
-                let rl     = Rc::clone(&refresh_list);
-                let win    = window.clone();
-                let win2   = window.clone();
-                let sv     = split_view.clone();
+                let state2  = Rc::clone(&state);
+                let ms      = main_stack.clone();
+                let es      = editor_stack.clone();
+                let vc      = vault_chip.clone();
+                let hb      = home_btn.clone();
+                let dfb     = dfree_btn.clone();
+                let ejb     = export_journal_btn.clone();
+                let rl      = Rc::clone(&refresh_list);
+                let win     = window.clone();
+                let win2    = window.clone();
+                let sv      = split_view.clone();
                 new_btn.connect_clicked(move |_| {
                     wire_create_journal(
                         &win, Rc::clone(&state2), ms.clone(), es.clone(),
-                        vc.clone(), hb.clone(), Rc::clone(&rl), win2.clone(),
-                        sv.clone(),
+                        vc.clone(), hb.clone(), dfb.clone(), ejb.clone(),
+                        Rc::clone(&rl), win2.clone(), sv.clone(),
                     );
                 });
             }
-            centre.append(&new_btn);
+
+            let import_btn = gtk4::Button::builder()
+                .label("Import .vault").css_classes(["flat"]).build();
+            {
+                let rh2 = Rc::clone(&rh_holder);
+                let win = window.clone();
+                import_btn.connect_clicked(move |_| {
+                    let filters = gio::ListStore::new::<gtk4::FileFilter>();
+                    let f = gtk4::FileFilter::new();
+                    f.set_name(Some("Vault files"));
+                    f.add_pattern("*.vault");
+                    filters.append(&f);
+                    let fd = gtk4::FileDialog::builder()
+                        .title("Import Vault Backup")
+                        .filters(&filters)
+                        .build();
+                    let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+                    fd.set_initial_folder(Some(&gio::File::for_path(&home_dir)));
+                    let rh3 = Rc::clone(&rh2);
+                    let win2 = win.clone();
+                    fd.open(Some(&win), None::<&gio::Cancellable>, move |result| {
+                        let Ok(file)   = result else { return; };
+                        let Some(src)  = file.path() else { return; };
+                        let dest_dir   = vault::vaults_dir();
+                        let _ = std::fs::create_dir_all(&dest_dir);
+                        let fname = src.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| format!("{}.vault", uuid::Uuid::new_v4()));
+                        let dest = dest_dir.join(&fname);
+                        match std::fs::copy(&src, &dest) {
+                            Ok(_) => { if let Some(f) = rh3.borrow().as_ref() { f(); } }
+                            Err(e) => dlg::show_error(&win2, &e.to_string()),
+                        }
+                    });
+                });
+            }
+
+            btn_row.append(&new_btn);
+            btn_row.append(&import_btn);
+            centre.append(&btn_row);
 
             home_page.append(&gtk4::ScrolledWindow::builder()
                 .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -347,13 +416,28 @@ pub fn build_window(app: &adw::Application) {
 
     // ── Wire: Home button ──────────────────────────────────────────────────
     {
-        let ms2  = main_stack.clone();
-        let vc2  = vault_chip.clone();
-        let hb2  = home_btn.clone();
-        let rh2  = Rc::clone(&refresh_home);
+        let ms2       = main_stack.clone();
+        let vc2       = vault_chip.clone();
+        let hb2       = home_btn.clone();
+        let rh2       = Rc::clone(&refresh_home);
+        let dfree2    = Rc::clone(&dfree_active);
+        let dfbtn2    = dfree_btn.clone();
+        let ejbtn2    = export_journal_btn.clone();
+        let bbout2    = bottom_bar.outer.clone();
+        let sv2       = split_view.clone();
         home_btn.connect_clicked(move |_| {
             vc2.set_visible(false);
             hb2.set_visible(false);
+            dfbtn2.set_visible(false);
+            ejbtn2.set_visible(false);
+            if dfree2.get() {
+                dfree2.set(false);
+                dfbtn2.set_active(false);
+                dfbtn2.remove_css_class("dfree-active");
+                dfbtn2.set_icon_name("view-fullscreen-symbolic");
+                bbout2.set_visible(true);
+                sv2.set_show_sidebar(true);
+            }
             rh2();
             ms2.set_visible_child_name("home");
         });
@@ -603,6 +687,7 @@ pub fn build_window(app: &adw::Application) {
             let state2  = Rc::clone(&state);
             let mbox3   = mbox2.clone();
             let mstrip2 = mstrip.clone();
+            let win3    = win2.clone();
             fd.open(Some(&win2), None::<&gio::Cancellable>, move |result| {
                 let Ok(file) = result else { return; };
                 let Some(path) = file.path() else { return; };
@@ -617,7 +702,7 @@ pub fn build_window(app: &adw::Application) {
                 let media_id = item.id.clone();
                 let eid = state2.borrow().current_entry_id.clone();
                 if let Some(id) = eid {
-                    let thumb = make_deletable_thumb(&item, Rc::clone(&state2), id.clone(), media_id, mstrip2.clone());
+                    let thumb = make_deletable_thumb(&item, Rc::clone(&state2), id.clone(), media_id, mstrip2.clone(), win3.clone());
                     {
                         let mut st = state2.borrow_mut();
                         if let Some(v) = st.vault.as_mut() {
@@ -652,6 +737,86 @@ pub fn build_window(app: &adw::Application) {
             drop(st);
             estack.set_visible_child_name("empty");
             rl();
+        });
+    }
+
+    // ── Wire: Pin entry ────────────────────────────────────────────────────
+    {
+        let state = Rc::clone(&state);
+        let rl    = Rc::clone(&refresh_list);
+        editor.pin_btn.connect_clicked(move |btn| {
+            let is_pinned = btn.is_active();
+            let id = state.borrow().current_entry_id.clone();
+            let Some(id) = id else { return; };
+            let mut st = state.borrow_mut();
+            if let Some(v) = st.vault.as_mut() {
+                if let Some(e) = v.get_entry_mut(&id) {
+                    e.pinned = is_pinned;
+                }
+                let _ = v.save();
+            }
+            drop(st);
+            rl();
+        });
+    }
+
+    // ── Wire: Distraction-free toggle ─────────────────────────────────────
+    {
+        let dfree  = Rc::clone(&dfree_active);
+        let bbout  = bottom_bar.outer.clone();
+        let sv     = split_view.clone();
+        dfree_btn.connect_clicked(move |btn| {
+            let now_active = !dfree.get();
+            dfree.set(now_active);
+            if now_active {
+                btn.add_css_class("dfree-active");
+                btn.set_icon_name("view-restore-symbolic");
+                bbout.set_visible(false);
+                sv.set_show_sidebar(false);
+            } else {
+                btn.remove_css_class("dfree-active");
+                btn.set_icon_name("view-fullscreen-symbolic");
+                bbout.set_visible(true);
+                sv.set_show_sidebar(true);
+            }
+        });
+    }
+
+    // ── Wire: Export journal (all entries as markdown) ─────────────────────
+    {
+        let state = Rc::clone(&state);
+        let win2  = window.clone();
+        export_journal_btn.connect_clicked(move |_| {
+            let name = state.borrow().vault.as_ref().map(|v| v.name.clone()).unwrap_or_default();
+            let entries: Vec<(String, String, String)> = {
+                let st = state.borrow();
+                st.vault.as_ref().map(|v| {
+                    v.search("").iter().map(|e| (e.title.clone(), e.body.clone(), e.created.clone())).collect()
+                }).unwrap_or_default()
+            };
+            if entries.is_empty() { return; }
+            let mut md = String::new();
+            for (title, body, created) in &entries {
+                let display_title = if title.is_empty() { "Untitled" } else { title };
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(created) {
+                    md.push_str(&format!("# {}\n_{}_\n\n{}\n\n---\n\n",
+                        display_title, dt.format("%-d %b %Y, %H:%M"), body));
+                } else {
+                    md.push_str(&format!("# {}\n\n{}\n\n---\n\n", display_title, body));
+                }
+            }
+            let stem = if name.is_empty() { "journal".to_string() } else { name.clone() };
+            let fd = gtk4::FileDialog::builder()
+                .title("Export Journal")
+                .initial_name(&format!("{stem}.md"))
+                .build();
+            let home_dir = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+            fd.set_initial_folder(Some(&gio::File::for_path(&home_dir)));
+            fd.save(Some(&win2), None::<&gio::Cancellable>, move |result| {
+                let Ok(file)   = result else { return; };
+                let Some(path) = file.path() else { return; };
+                let _ = std::fs::write(&path, &md);
+            });
         });
     }
 
@@ -837,24 +1002,113 @@ pub fn build_window(app: &adw::Application) {
 
     // ── Wire: Keyboard shortcuts ───────────────────────────────────────────
     {
-        let new_btn2 = sidebar.new_btn.clone();
-        let search2  = sidebar.search.clone();
-        let font2    = editor.font_btn.clone();
-        let ms3      = main_stack.clone();
-        let key_ctrl = gtk4::EventControllerKey::new();
+        let new_btn2  = sidebar.new_btn.clone();
+        let search2   = sidebar.search.clone();
+        let font2     = editor.font_btn.clone();
+        let ms3       = main_stack.clone();
+        let dfbtn3    = dfree_btn.clone();
+        let la        = Rc::clone(&last_activity);
+        let key_ctrl  = gtk4::EventControllerKey::new();
         key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
         key_ctrl.connect_key_pressed(move |_, key, _, modifiers| {
             use gdk4::Key;
+            la.set(Instant::now());
             let ctrl      = modifiers.contains(gdk4::ModifierType::CONTROL_MASK);
             let in_editor = ms3.visible_child_name().as_deref() == Some("editor");
             match (ctrl, key) {
                 (true, Key::n) if in_editor     => { new_btn2.emit_clicked(); glib::Propagation::Stop }
                 (true, Key::f) if in_editor     => { search2.grab_focus();    glib::Propagation::Stop }
                 (true, Key::comma) if in_editor => { font2.emit_clicked();     glib::Propagation::Stop }
+                (false, Key::F11) if in_editor  => { dfbtn3.emit_clicked();    glib::Propagation::Stop }
                 _ => glib::Propagation::Proceed,
             }
         });
         window.add_controller(key_ctrl);
+    }
+
+    // ── Wire: Activity tracking (mouse motion resets inactivity timer) ─────
+    {
+        let la = Rc::clone(&last_activity);
+        let motion = gtk4::EventControllerMotion::new();
+        motion.connect_motion(move |_, _, _| { la.set(Instant::now()); });
+        window.add_controller(motion);
+    }
+
+    // ── Wire: Auto-lock timer (checks every 30 s) ──────────────────────────
+    {
+        let state2    = Rc::clone(&state);
+        let ms4       = main_stack.clone();
+        let vc4       = vault_chip.clone();
+        let hb4       = home_btn.clone();
+        let dfbtn4    = dfree_btn.clone();
+        let ejbtn4    = export_journal_btn.clone();
+        let rh4       = Rc::clone(&refresh_home);
+        let dfree4    = Rc::clone(&dfree_active);
+        let bbout4    = bottom_bar.outer.clone();
+        let sv4       = split_view.clone();
+        let la4       = Rc::clone(&last_activity);
+        glib::timeout_add_local(Duration::from_secs(30), move || {
+            let lock_mins = state2.borrow().settings.auto_lock_minutes;
+            if lock_mins == 0 { return glib::ControlFlow::Continue; }
+            if state2.borrow().vault.is_none() { return glib::ControlFlow::Continue; }
+            let elapsed_mins = la4.get().elapsed().as_secs() / 60;
+            if elapsed_mins >= lock_mins as u64 {
+                {
+                    let mut st = state2.borrow_mut();
+                    st.vault = None;
+                    st.current_entry_id = None;
+                }
+                vc4.set_visible(false);
+                hb4.set_visible(false);
+                dfbtn4.set_visible(false);
+                ejbtn4.set_visible(false);
+                if dfree4.get() {
+                    dfree4.set(false);
+                    dfbtn4.set_active(false);
+                    dfbtn4.remove_css_class("dfree-active");
+                    dfbtn4.set_icon_name("view-fullscreen-symbolic");
+                    bbout4.set_visible(true);
+                    sv4.set_show_sidebar(true);
+                }
+                rh4();
+                ms4.set_visible_child_name("home");
+            }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    // ── Wire: Auto-lock settings (bottom bar) ─────────────────────────────
+    {
+        let state = Rc::clone(&state);
+        let cp2   = css_provider.clone();
+        bottom_bar.settings_btn.connect_clicked(move |btn| {
+            let cur_mins = state.borrow().settings.auto_lock_minutes;
+            let popover = gtk4::Popover::new();
+            popover.set_parent(btn);
+            let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+            vbox.set_margin_start(12); vbox.set_margin_end(12);
+            vbox.set_margin_top(10);   vbox.set_margin_bottom(10);
+            vbox.append(&gtk4::Label::builder()
+                .label("Auto-lock after (0 = off)")
+                .css_classes(["dim-label"]).halign(gtk4::Align::Start).build());
+            let adj  = gtk4::Adjustment::new(cur_mins as f64, 0.0, 120.0, 1.0, 5.0, 0.0);
+            let spin = gtk4::SpinButton::new(Some(&adj), 1.0, 0);
+            vbox.append(&spin);
+            vbox.append(&gtk4::Label::builder()
+                .label("minutes").css_classes(["dim-label"]).halign(gtk4::Align::Start).build());
+            popover.set_child(Some(&vbox));
+
+            let st2 = Rc::clone(&state);
+            let cp3 = cp2.clone();
+            popover.connect_closed(move |_| {
+                let mins = spin.value() as u32;
+                let mut st = st2.borrow_mut();
+                st.settings.auto_lock_minutes = mins;
+                let _ = st.settings.save();
+                cp3.load_from_string(&st.settings.css());
+            });
+            popover.popup();
+        });
     }
 
     refresh_home();
@@ -873,6 +1127,8 @@ fn wire_create_journal(
     editor_stack: gtk4::Stack,
     vault_chip: gtk4::Label,
     home_btn: gtk4::Button,
+    dfree_btn: gtk4::ToggleButton,
+    export_journal_btn: gtk4::Button,
     refresh_list: Rc<dyn Fn()>,
     err_parent: adw::ApplicationWindow,
     split_view: adw::OverlaySplitView,
@@ -884,6 +1140,8 @@ fn wire_create_journal(
                 vault_chip.set_label(&v.name);
                 vault_chip.set_visible(true);
                 home_btn.set_visible(true);
+                dfree_btn.set_visible(true);
+                export_journal_btn.set_visible(true);
                 state.borrow_mut().vault = Some(v);
                 state.borrow_mut().current_entry_id = None;
                 editor_stack.set_visible_child_name("empty");
@@ -911,6 +1169,8 @@ fn build_journal_card(
     editor_stack: gtk4::Stack,
     vault_chip: gtk4::Label,
     home_btn: gtk4::Button,
+    dfree_btn: gtk4::ToggleButton,
+    export_journal_btn: gtk4::Button,
     window: adw::ApplicationWindow,
     split_view: adw::OverlaySplitView,
 ) -> gtk4::Widget {
@@ -925,29 +1185,39 @@ fn build_journal_card(
     text_box.append(&gtk4::Label::builder()
         .label(name).css_classes(["journal-card-name"]).halign(gtk4::Align::Start).build());
 
-    let open_btn = gtk4::Button::builder().label("Open").css_classes(["flat"])
-        .valign(gtk4::Align::Center).margin_end(8).build();
-    let del_btn  = gtk4::Button::builder().icon_name("user-trash-symbolic")
+    let open_btn   = gtk4::Button::builder().label("Open").css_classes(["flat"])
+        .valign(gtk4::Align::Center).margin_end(4).build();
+    let chpass_btn = gtk4::Button::builder()
+        .icon_name("dialog-password-symbolic").tooltip_text("Change passphrase")
+        .css_classes(["flat"]).valign(gtk4::Align::Center).margin_end(4).build();
+    let backup_btn = gtk4::Button::builder()
+        .icon_name("folder-download-symbolic").tooltip_text("Export encrypted backup (.vault)")
+        .css_classes(["flat"]).valign(gtk4::Align::Center).margin_end(4).build();
+    let del_btn    = gtk4::Button::builder().icon_name("user-trash-symbolic")
         .css_classes(["flat", "destructive-action"])
         .valign(gtk4::Align::Center).margin_end(8).build();
 
     card.append(&text_box);
     card.append(&open_btn);
+    card.append(&chpass_btn);
+    card.append(&backup_btn);
     card.append(&del_btn);
 
     // Open
     {
-        let name2  = name.to_owned();
-        let path2  = path.clone();
-        let state2 = Rc::clone(&state);
-        let rl     = Rc::clone(&refresh_list);
-        let ms     = main_stack.clone();
-        let es     = editor_stack.clone();
-        let vc     = vault_chip.clone();
-        let hb     = home_btn.clone();
-        let win    = window.clone();
-        let win2   = window.clone();
-        let sv     = split_view.clone();
+        let name2    = name.to_owned();
+        let path2    = path.clone();
+        let state2   = Rc::clone(&state);
+        let rl       = Rc::clone(&refresh_list);
+        let ms       = main_stack.clone();
+        let es       = editor_stack.clone();
+        let vc       = vault_chip.clone();
+        let hb       = home_btn.clone();
+        let dfb      = dfree_btn.clone();
+        let ejb      = export_journal_btn.clone();
+        let win      = window.clone();
+        let win2     = window.clone();
+        let sv       = split_view.clone();
         open_btn.connect_clicked(move |_| {
             let name3  = name2.clone();
             let path3  = path2.clone();
@@ -957,6 +1227,8 @@ fn build_journal_card(
             let es2    = es.clone();
             let vc2    = vc.clone();
             let hb2    = hb.clone();
+            let dfb2   = dfb.clone();
+            let ejb2   = ejb.clone();
             let win3   = win2.clone();
             let sv2    = sv.clone();
             dlg::show_unlock(&win, &name3, move |pass| {
@@ -965,6 +1237,8 @@ fn build_journal_card(
                         vc2.set_label(&v.name);
                         vc2.set_visible(true);
                         hb2.set_visible(true);
+                        dfb2.set_visible(true);
+                        ejb2.set_visible(true);
                         state3.borrow_mut().vault = Some(v);
                         state3.borrow_mut().current_entry_id = None;
                         es2.set_visible_child_name("empty");
@@ -974,6 +1248,58 @@ fn build_journal_card(
                     }
                     Err(e) => dlg::show_error(&win3, &e.to_string()),
                 }
+            });
+        });
+    }
+
+    // Change passphrase
+    {
+        let name2 = name.to_owned();
+        let path2 = path.clone();
+        let win   = window.clone();
+        let win2  = window.clone();
+        chpass_btn.connect_clicked(move |_| {
+            let name3 = name2.clone();
+            let path3 = path2.clone();
+            let win3  = win2.clone();
+            dlg::show_change_passphrase(&win, &name2, move |old_pass, new_pass| {
+                match Vault::open(&path3, &old_pass) {
+                    Ok(mut v) => {
+                        match v.change_passphrase(&new_pass) {
+                            Ok(_) => {
+                                let msg = format!("Passphrase for \"{}\" changed.", name3);
+                                let d = adw::MessageDialog::new(Some(&win3), Some("Passphrase Changed"), Some(&msg));
+                                d.add_response("ok", "OK");
+                                d.set_default_response(Some("ok"));
+                                d.connect_response(None, |d, _| d.close());
+                                d.present();
+                            }
+                            Err(e) => dlg::show_error(&win3, &e.to_string()),
+                        }
+                    }
+                    Err(_) => dlg::show_error(&win3, "Wrong passphrase."),
+                }
+            });
+        });
+    }
+
+    // Export encrypted backup
+    {
+        let name2 = name.to_owned();
+        let path2 = path.clone();
+        let win   = window.clone();
+        backup_btn.connect_clicked(move |_| {
+            let src = path2.clone();
+            let fd  = gtk4::FileDialog::builder()
+                .title("Export Encrypted Backup")
+                .initial_name(&format!("{}.vault", name2))
+                .build();
+            let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+            fd.set_initial_folder(Some(&gio::File::for_path(&home_dir)));
+            fd.save(Some(&win), None::<&gio::Cancellable>, move |result| {
+                let Ok(file)   = result else { return; };
+                let Some(dest) = file.path() else { return; };
+                let _ = std::fs::copy(&src, &dest);
             });
         });
     }
@@ -1093,6 +1419,7 @@ struct EditorWidgets {
     date_btn:         gtk4::Button,
     font_btn:         gtk4::Button,
     lh_btn:           gtk4::Button,
+    pin_btn:          gtk4::ToggleButton,
     word_count_label: gtk4::Label,
 }
 
@@ -1132,6 +1459,10 @@ fn build_editor() -> EditorWidgets {
         .label("↕")
         .tooltip_text("Line height")
         .css_classes(["flat"]).build();
+    let pin_btn = gtk4::ToggleButton::builder()
+        .icon_name("starred-symbolic")
+        .tooltip_text("Pin entry (keep at top of list)")
+        .css_classes(["flat"]).build();
     let attach_btn = gtk4::Button::builder()
         .icon_name("mail-attachment-symbolic").tooltip_text("Attach image or video")
         .css_classes(["flat"]).build();
@@ -1146,6 +1477,7 @@ fn build_editor() -> EditorWidgets {
     title_bar.append(&date_btn);
     title_bar.append(&font_btn);
     title_bar.append(&lh_btn);
+    title_bar.append(&pin_btn);
     title_bar.append(&attach_btn);
     title_bar.append(&export_btn);
     title_bar.append(&delete_btn);
@@ -1196,7 +1528,7 @@ fn build_editor() -> EditorWidgets {
 
     EditorWidgets { outer, stack, title: title_entry, body: body_view,
                     media_box, media_strip, attach_btn, export_btn, delete_btn,
-                    date_btn, font_btn, lh_btn, word_count_label }
+                    date_btn, font_btn, lh_btn, pin_btn, word_count_label }
 }
 
 struct BottomBarWidgets {
@@ -1215,6 +1547,7 @@ struct BottomBarWidgets {
     master_scale: gtk4::Scale,
     mpris_vol:    gtk4::Scale,
     dark_btn:     gtk4::Button,
+    settings_btn: gtk4::Button,
     track_label:  gtk4::Label,
     artist_label: gtk4::Label,
     prev_btn:     gtk4::Button,
@@ -1225,6 +1558,9 @@ struct BottomBarWidgets {
 fn build_bottom_bar() -> BottomBarWidgets {
     let outer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     outer.add_css_class("bottom-bar");
+    // Prevent vexpand from propagating up from inner children (e.g. the spacer
+    // in narrow mode) so the bar never steals height from the content area.
+    outer.set_vexpand(false);
     let sep_h = gtk4::Separator::new(gtk4::Orientation::Horizontal);
     let sep_v = gtk4::Separator::new(gtk4::Orientation::Vertical);
     sep_v.set_visible(false);
@@ -1250,13 +1586,18 @@ fn build_bottom_bar() -> BottomBarWidgets {
     let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
 
-    // Controls: dark mode + accent
+    // Controls: dark mode + settings
     let config_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     let dark_btn = gtk4::Button::builder()
         .icon_name("weather-clear-night-symbolic")
         .tooltip_text("Toggle dark mode")
         .css_classes(["flat"]).build();
+    let settings_btn = gtk4::Button::builder()
+        .icon_name("preferences-system-symbolic")
+        .tooltip_text("Settings")
+        .css_classes(["flat"]).build();
     config_box.append(&dark_btn);
+    config_box.append(&settings_btn);
 
     // MPRIS
     let mpris_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -1305,7 +1646,7 @@ fn build_bottom_bar() -> BottomBarWidgets {
     BottomBarWidgets {
         outer, inner, noise_box, config_box, mpris_box, mpris_btns, spacer, sep_h, sep_v,
         white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms,
-        mpris_vol, dark_btn,
+        mpris_vol, dark_btn, settings_btn,
         track_label, artist_label, prev_btn, play_btn, next_btn,
     }
 }
@@ -1340,9 +1681,20 @@ fn make_entry_row(entry: &crate::vault::types::Entry) -> gtk4::ListBoxRow {
     vbox.set_margin_start(12); vbox.set_margin_end(12);
     vbox.set_margin_top(8);    vbox.set_margin_bottom(8);
     let display = if entry.title.is_empty() { "Untitled" } else { &entry.title };
-    vbox.append(&gtk4::Label::builder()
+    let title_hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
+    title_hbox.set_halign(gtk4::Align::Fill);
+    let title_lbl = gtk4::Label::builder()
         .label(display).css_classes(["entry-title-label"])
-        .halign(gtk4::Align::Start).ellipsize(gtk4::pango::EllipsizeMode::End).single_line_mode(true).build());
+        .halign(gtk4::Align::Start).ellipsize(gtk4::pango::EllipsizeMode::End)
+        .single_line_mode(true).hexpand(true).build();
+    title_hbox.append(&title_lbl);
+    if entry.pinned {
+        let pin = gtk4::Image::from_icon_name("starred-symbolic");
+        pin.set_pixel_size(12);
+        pin.add_css_class("pin-icon");
+        title_hbox.append(&pin);
+    }
+    vbox.append(&title_hbox);
     let date = chrono::DateTime::parse_from_rfc3339(&entry.created)
         .map(|dt| dt.format("%-d %b %Y, %H:%M").to_string()).unwrap_or_else(|_| "—".into());
     vbox.append(&gtk4::Label::builder()
@@ -1357,10 +1709,22 @@ fn make_deletable_thumb(
     entry_id:    String,
     media_id:    String,
     media_strip: gtk4::Box,
+    window:      adw::ApplicationWindow,
 ) -> Option<gtk4::Widget> {
     let thumb   = make_media_thumb(item)?;
     let overlay = gtk4::Overlay::new();
     overlay.set_child(Some(&thumb));
+
+    // Click-to-enlarge
+    {
+        let item2 = item.clone();
+        let win2  = window.clone();
+        let click = gtk4::GestureClick::new();
+        click.connect_released(move |_, _, _, _| {
+            show_media_lightbox(&item2, &win2);
+        });
+        overlay.add_controller(click);
+    }
 
     let del_btn = gtk4::Button::builder()
         .icon_name("window-close-symbolic")
@@ -1389,6 +1753,43 @@ fn make_deletable_thumb(
 
     overlay.add_overlay(&del_btn);
     Some(overlay.upcast())
+}
+
+fn show_media_lightbox(item: &MediaItem, parent: &adw::ApplicationWindow) {
+    use base64::Engine;
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(&item.data) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    match item.kind {
+        crate::vault::types::MediaKind::Image => {
+            let Ok(texture) = gdk4::Texture::from_bytes(&glib::Bytes::from_owned(bytes)) else { return; };
+            let win = gtk4::Window::builder()
+                .transient_for(parent).modal(true).resizable(true)
+                .default_width(900).default_height(700)
+                .title("Media").build();
+            let pic = gtk4::Picture::for_paintable(&texture);
+            pic.set_content_fit(gtk4::ContentFit::Contain);
+            win.set_child(Some(&pic));
+            let click = gtk4::GestureClick::new();
+            let win2 = win.clone();
+            click.connect_released(move |_, _, _, _| { win2.close(); });
+            pic.add_controller(click);
+            win.present();
+        }
+        crate::vault::types::MediaKind::Video => {
+            let tmp = std::env::temp_dir().join(format!("blossom_lb_{}.tmp", &item.id[..8]));
+            if std::fs::write(&tmp, &bytes).is_err() { return; }
+            let win = gtk4::Window::builder()
+                .transient_for(parent).modal(true).resizable(true)
+                .default_width(900).default_height(600)
+                .title("Media").build();
+            let video = gtk4::Video::for_file(Some(&gio::File::for_path(&tmp)));
+            video.set_autoplay(true);
+            win.set_child(Some(&video));
+            win.present();
+        }
+    }
 }
 
 fn make_media_thumb(item: &MediaItem) -> Option<gtk4::Widget> {

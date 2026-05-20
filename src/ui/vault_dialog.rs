@@ -159,6 +159,81 @@ where
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Change passphrase
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Presents a change-passphrase dialog. Calls `cb` with (old_pass, new_pass) on success.
+pub fn show_change_passphrase<F>(parent: &adw::ApplicationWindow, vault_name: &str, cb: F)
+where
+    F: Fn(String, String) + 'static,
+{
+    let heading = format!("Change Passphrase — \"{vault_name}\"");
+    let dialog = adw::MessageDialog::new(Some(parent), Some(&heading), None);
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("change", "Change");
+    dialog.set_response_appearance("change", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("change"));
+    dialog.set_close_response("cancel");
+
+    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
+    content.set_margin_start(8);
+    content.set_margin_end(8);
+    content.set_margin_bottom(8);
+
+    let old_entry = gtk4::PasswordEntry::builder()
+        .placeholder_text("Current passphrase")
+        .show_peek_icon(true)
+        .build();
+    let new_entry = gtk4::PasswordEntry::builder()
+        .placeholder_text("New passphrase")
+        .show_peek_icon(true)
+        .build();
+    let confirm_entry = gtk4::PasswordEntry::builder()
+        .placeholder_text("Confirm new passphrase")
+        .show_peek_icon(true)
+        .build();
+    let error_label = gtk4::Label::builder()
+        .label("")
+        .css_classes(["error"])
+        .halign(gtk4::Align::Start)
+        .visible(false)
+        .build();
+
+    content.append(&old_entry);
+    content.append(&new_entry);
+    content.append(&confirm_entry);
+    content.append(&error_label);
+    dialog.set_extra_child(Some(&content));
+
+    let old2  = old_entry.clone();
+    let new2  = new_entry.clone();
+    let conf2 = confirm_entry.clone();
+    let err2  = error_label.clone();
+
+    dialog.connect_response(None, move |dlg, response| {
+        if response != "change" { dlg.close(); return; }
+        let old_pass = old2.text().to_string();
+        let new_pass = new2.text().to_string();
+        let confirm  = conf2.text().to_string();
+
+        if new_pass.len() < 4 {
+            err2.set_label("New passphrase must be at least 4 characters.");
+            err2.set_visible(true);
+            return;
+        }
+        if new_pass != confirm {
+            err2.set_label("Passphrases do not match.");
+            err2.set_visible(true);
+            return;
+        }
+        dlg.close();
+        cb(old_pass, new_pass);
+    });
+
+    dialog.present();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Generic error toast
 // ──────────────────────────────────────────────────────────────────────────────
 
