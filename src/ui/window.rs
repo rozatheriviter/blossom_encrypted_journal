@@ -48,7 +48,7 @@ pub fn build_window(app: &adw::Application) {
     gtk4::style_context_add_provider_for_display(
         &gdk4::Display::default().unwrap(),
         &css_provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        gtk4::STYLE_PROVIDER_PRIORITY_USER,
     );
 
     let noise = Rc::new(NoiseEngine::new());
@@ -109,6 +109,12 @@ pub fn build_window(app: &adw::Application) {
         .build();
     header.pack_end(&export_journal_btn);
 
+    let settings_btn = gtk4::Button::builder()
+        .icon_name("preferences-system-symbolic")
+        .tooltip_text("Settings")
+        .css_classes(["flat"])
+        .build();
+    header.pack_end(&settings_btn);
 
     // ── Stacks ─────────────────────────────────────────────────────────────
     let main_stack = gtk4::Stack::new();
@@ -302,7 +308,6 @@ pub fn build_window(app: &adw::Application) {
 
             let centre = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
             centre.set_halign(gtk4::Align::Center);
-            centre.set_valign(gtk4::Align::Start);
             centre.set_margin_top(56);
             centre.set_margin_bottom(56);
             centre.set_margin_start(24);
@@ -366,7 +371,7 @@ pub fn build_window(app: &adw::Application) {
             }
 
             let import_btn = gtk4::Button::builder()
-                .label("Import .vault").css_classes(["flat"]).build();
+                .label("Import .vault").css_classes(["new-journal-button"]).build();
             {
                 let rh2 = Rc::clone(&rh_holder);
                 let win = window.clone();
@@ -405,10 +410,8 @@ pub fn build_window(app: &adw::Application) {
             btn_row.append(&import_btn);
             centre.append(&btn_row);
 
-            home_page.append(&gtk4::ScrolledWindow::builder()
-                .hscrollbar_policy(gtk4::PolicyType::Never)
-                .vscrollbar_policy(gtk4::PolicyType::Automatic)
-                .vexpand(true).child(&centre).build());
+            centre.set_vexpand(true);
+            home_page.append(&centre);
         })
     };
 
@@ -1034,7 +1037,7 @@ pub fn build_window(app: &adw::Application) {
         window.add_controller(motion);
     }
 
-    // ── Wire: Auto-lock timer (checks every 30 s) ──────────────────────────
+    // ── Wire: Auto-lock timer (checks every 5 s) ───────────────────────────
     {
         let state2    = Rc::clone(&state);
         let ms4       = main_stack.clone();
@@ -1047,12 +1050,12 @@ pub fn build_window(app: &adw::Application) {
         let bbout4    = bottom_bar.outer.clone();
         let sv4       = split_view.clone();
         let la4       = Rc::clone(&last_activity);
-        glib::timeout_add_local(Duration::from_secs(30), move || {
-            let lock_mins = state2.borrow().settings.auto_lock_minutes;
-            if lock_mins == 0 { return glib::ControlFlow::Continue; }
+        glib::timeout_add_local(Duration::from_secs(5), move || {
+            let lock_secs = state2.borrow().settings.auto_lock_secs;
+            if lock_secs == 0 { return glib::ControlFlow::Continue; }
             if state2.borrow().vault.is_none() { return glib::ControlFlow::Continue; }
-            let elapsed_mins = la4.get().elapsed().as_secs() / 60;
-            if elapsed_mins >= lock_mins as u64 {
+            let elapsed_secs = la4.get().elapsed().as_secs();
+            if elapsed_secs >= lock_secs as u64 {
                 {
                     let mut st = state2.borrow_mut();
                     st.vault = None;
@@ -1077,33 +1080,86 @@ pub fn build_window(app: &adw::Application) {
         });
     }
 
-    // ── Wire: Auto-lock settings (bottom bar) ─────────────────────────────
+    // ── Wire: Instant lock on focus loss ───────────────────────────────────
+    {
+        let state2 = Rc::clone(&state);
+        let ms4    = main_stack.clone();
+        let vc4    = vault_chip.clone();
+        let hb4    = home_btn.clone();
+        let dfbtn4 = dfree_btn.clone();
+        let ejbtn4 = export_journal_btn.clone();
+        let rh4    = Rc::clone(&refresh_home);
+        let dfree4 = Rc::clone(&dfree_active);
+        let bbout4 = bottom_bar.outer.clone();
+        let sv4    = split_view.clone();
+        window.connect_is_active_notify(move |win| {
+            if win.is_active() { return; }
+            if !state2.borrow().settings.instant_lock { return; }
+            if state2.borrow().vault.is_none() { return; }
+            {
+                let mut st = state2.borrow_mut();
+                st.vault = None;
+                st.current_entry_id = None;
+            }
+            vc4.set_visible(false);
+            hb4.set_visible(false);
+            dfbtn4.set_visible(false);
+            ejbtn4.set_visible(false);
+            if dfree4.get() {
+                dfree4.set(false);
+                dfbtn4.set_active(false);
+                dfbtn4.remove_css_class("dfree-active");
+                dfbtn4.set_icon_name("view-fullscreen-symbolic");
+                bbout4.set_visible(true);
+                sv4.set_show_sidebar(true);
+            }
+            rh4();
+            ms4.set_visible_child_name("home");
+        });
+    }
+
+    // ── Wire: Settings popover ────────────────────────────────────────────
     {
         let state = Rc::clone(&state);
         let cp2   = css_provider.clone();
-        bottom_bar.settings_btn.connect_clicked(move |btn| {
-            let cur_mins = state.borrow().settings.auto_lock_minutes;
+        settings_btn.connect_clicked(move |btn| {
+            let (cur_secs, cur_instant) = {
+                let s = state.borrow();
+                (s.settings.auto_lock_secs, s.settings.instant_lock)
+            };
             let popover = gtk4::Popover::new();
             popover.set_parent(btn);
             let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
             vbox.set_margin_start(12); vbox.set_margin_end(12);
             vbox.set_margin_top(10);   vbox.set_margin_bottom(10);
+
+            // Instant lock checkbox
+            let instant_chk = gtk4::CheckButton::builder()
+                .label("Instant lock on focus loss")
+                .active(cur_instant)
+                .build();
+            vbox.append(&instant_chk);
+
+            // Auto-lock seconds spinner
             vbox.append(&gtk4::Label::builder()
                 .label("Auto-lock after (0 = off)")
                 .css_classes(["dim-label"]).halign(gtk4::Align::Start).build());
-            let adj  = gtk4::Adjustment::new(cur_mins as f64, 0.0, 120.0, 1.0, 5.0, 0.0);
+            let adj  = gtk4::Adjustment::new(cur_secs as f64, 0.0, 3600.0, 1.0, 30.0, 0.0);
             let spin = gtk4::SpinButton::new(Some(&adj), 1.0, 0);
             vbox.append(&spin);
             vbox.append(&gtk4::Label::builder()
-                .label("minutes").css_classes(["dim-label"]).halign(gtk4::Align::Start).build());
+                .label("seconds").css_classes(["dim-label"]).halign(gtk4::Align::Start).build());
+
             popover.set_child(Some(&vbox));
 
             let st2 = Rc::clone(&state);
             let cp3 = cp2.clone();
             popover.connect_closed(move |_| {
-                let mins = spin.value() as u32;
-                let mut st = st2.borrow_mut();
-                st.settings.auto_lock_minutes = mins;
+                let secs    = spin.value() as u32;
+                let instant = instant_chk.is_active();
+                let mut st  = st2.borrow_mut();
+                st.settings.auto_lock_secs  = secs;
+                st.settings.instant_lock    = instant;
                 let _ = st.settings.save();
                 cp3.load_from_string(&st.settings.css());
             });
@@ -1547,7 +1603,6 @@ struct BottomBarWidgets {
     master_scale: gtk4::Scale,
     mpris_vol:    gtk4::Scale,
     dark_btn:     gtk4::Button,
-    settings_btn: gtk4::Button,
     track_label:  gtk4::Label,
     artist_label: gtk4::Label,
     prev_btn:     gtk4::Button,
@@ -1557,7 +1612,7 @@ struct BottomBarWidgets {
 
 fn build_bottom_bar() -> BottomBarWidgets {
     let outer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-    outer.add_css_class("bottom-bar");
+    outer.add_css_class("blossom-bar");
     // Prevent vexpand from propagating up from inner children (e.g. the spacer
     // in narrow mode) so the bar never steals height from the content area.
     outer.set_vexpand(false);
@@ -1592,12 +1647,7 @@ fn build_bottom_bar() -> BottomBarWidgets {
         .icon_name("weather-clear-night-symbolic")
         .tooltip_text("Toggle dark mode")
         .css_classes(["flat"]).build();
-    let settings_btn = gtk4::Button::builder()
-        .icon_name("preferences-system-symbolic")
-        .tooltip_text("Settings")
-        .css_classes(["flat"]).build();
     config_box.append(&dark_btn);
-    config_box.append(&settings_btn);
 
     // MPRIS
     let mpris_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -1646,7 +1696,7 @@ fn build_bottom_bar() -> BottomBarWidgets {
     BottomBarWidgets {
         outer, inner, noise_box, config_box, mpris_box, mpris_btns, spacer, sep_h, sep_v,
         white_scale: ws, pink_scale: ps, brown_scale: bs, master_scale: ms,
-        mpris_vol, dark_btn, settings_btn,
+        mpris_vol, dark_btn,
         track_label, artist_label, prev_btn, play_btn, next_btn,
     }
 }
@@ -1658,6 +1708,7 @@ fn noise_slider_vertical(class: &str) -> gtk4::Scale {
         .height_request(80)
         .inverted(true)
         .draw_value(false)
+        .vexpand(false)
         .css_classes(["noise-slider", class])
         .build();
     if class == "noise-slider-master" { scale.set_value(0.5); }
